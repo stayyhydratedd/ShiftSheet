@@ -22,7 +22,7 @@ public class StartupFlowService {
         consoleService.ownerAuthenticationStage(ownerService.findAll());
         consoleService.rootIdentityStage(sessionContext.getAppSettings());
         rootFolderService.checkRootFolderForInternalFolders(sessionContext.getCurrentRootFolder());
-        consoleService.pwzIdentityStage();
-        consoleService.monthSheetIdentityStage();
+        consoleService.pwzIdentityStage(sessionContext.getAppSettings());
+        consoleService.monthSheetIdentityStage(sessionContext.getAppSettings());
     }
 }

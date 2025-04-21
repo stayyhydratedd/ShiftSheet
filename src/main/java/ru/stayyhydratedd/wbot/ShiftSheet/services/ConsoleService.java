@@ -13,10 +13,7 @@ import ru.stayyhydratedd.wbot.ShiftSheet.util.InputOutputUtil;
 import ru.stayyhydratedd.wbot.ShiftSheet.util.JColorUtil;
 
 import java.io.Console;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
-import java.util.Scanner;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -33,8 +30,27 @@ public class ConsoleService {
     private final InputOutputUtil inputOutputUtil;
     private final DateUtil dateUtil;
     private final Scanner scanner = new Scanner(System.in);
-    private final Console console = System.console();
 
+    private static boolean pwzIsMissing = false;
+    private static boolean monthSheetIsMissing = false;
+
+    public void showControlPanel(){
+
+        Map<String, String> commands = new HashMap<>(){{
+
+        }};
+
+        while(true){
+            System.out.printf("""
+                    =========================ГЛАВНАЯ=========================
+                    1. Работа с корневой папкой
+                    2. Работа с ПВЗ
+                    3. Работа с листами
+                    """);
+            String parsed = parseInput("\\d");
+        }
+    }
+//    =============================================================================
     public void ownerAuthenticationStage(List<Owner> owners){
         if(owners.isEmpty()){
             System.out.printf("%sНе удалось обнаружить владельцев, создайте нового, чтобы продолжить работу\n",
@@ -138,7 +154,14 @@ public class ConsoleService {
             List<RootFolder> rootFolders = appSettings.getRootFolders();
             if (rootFolders.isEmpty()) {
                 createNewRootFolderInteractive();
-            } else if (rootFolders.size() > 1) {
+            } else if (rootFolders.size() == 1) {
+                RootFolder rootFolder = rootFolders.getFirst();
+                System.out.printf("%sРабочая папка '%s' была выбрана автоматически\n",
+                        jColorUtil.INFO,
+                        jColorUtil.turnTextIntoColor(rootFolder.getTitle(), JColorUtil.COLOR.INFO));
+                sessionContext.setCurrentRootFolder(rootFolder);
+                appSettingsService.updateSettings(settings -> settings.setLastRootFolder(rootFolder));
+            } else {
                 selectRootFolderInteractive(rootFolders);
             }
         }
@@ -166,7 +189,6 @@ public class ConsoleService {
 
             appSettingsService.updateSettings(settings -> {
                 settings.setRootFolders(Collections.singletonList(rootFolder));
-                settings.setLastRootFolder(rootFolder);
             });
             sessionContext.setCurrentRootFolder(rootFolder);
         }
@@ -200,10 +222,9 @@ public class ConsoleService {
         } while (!rootFolderSelected);
     }
 //    =============================================================================
-    public void pwzIdentityStage(){
-        AppSettings appSettings = sessionContext.getAppSettings();
-        Pwz lastPwz = appSettings.getLastPwz();
+    public void pwzIdentityStage(AppSettings appSettings){
         if(appSettings.getLastPwz() != null) {
+            Pwz lastPwz = appSettings.getLastPwz();
             sessionContext.setCurrentPwz(appSettings.getLastPwz());
             System.out.printf("%sПвз '%s' был автоматически выбран с прошлой сессии\n", jColorUtil.INFO,
                     jColorUtil.turnTextIntoColor(lastPwz.getAddress(), JColorUtil.COLOR.INFO));
@@ -212,6 +233,14 @@ public class ConsoleService {
             //todo
             if(pwzs.isEmpty()){
                 createNewPwzInteractive();
+            } else if (pwzs.size() == 1) {
+                Pwz pwz = pwzs.getFirst();
+                System.out.printf("%sПвз '%s' был выбран автоматически\n", jColorUtil.INFO,
+                        jColorUtil.turnTextIntoColor(pwz.getAddress(), JColorUtil.COLOR.INFO));
+                sessionContext.setCurrentPwz(pwz);
+                appSettingsService.updateSettings(settings -> settings.setLastPwz(pwz));
+            } else {
+                selectPwzInteractive(pwzs);
             }
         }
     }
@@ -233,19 +262,44 @@ public class ConsoleService {
                     pwzAddressIsValid = true;
                     Pwz pwz = pwzService.createPwz(parsed);
                     sessionContext.setCurrentPwz(pwz);
-                    appSettingsService.updateSettings(settings ->
-                            settings.setLastPwz(pwz));
                 }
             }
         } while (!pwzAddressIsValid);
     }
+
+    public void selectPwzInteractive(List<Pwz> pwzs) {
+        boolean pwzSelected = false;
+        boolean firstAttempt = true;
+        do {
+            if (firstAttempt) {
+                System.out.println("Выберите ПВЗ для продолжения работы: ");
+                int pwzNumber = 1;
+                for (Pwz pwz : pwzs) {
+                    System.out.println(pwzNumber + ". " + pwz.getAddress());
+                    pwzNumber++;
+                }
+            }
+            firstAttempt = false;
+            int choiceNum = Integer.parseInt(parseInput("\\d"));
+
+            if (choiceNum > pwzs.size() || choiceNum < 1) {
+                System.out.printf("Выберите цифрой от 1 до %d\n", pwzs.size());
+            } else {
+                Pwz pwz = pwzs.get(choiceNum - 1);
+                System.out.printf("ПВЗ '%s' успешно выбран\n", //todo
+                        pwz.getAddress());
+                sessionContext.setCurrentPwz(pwz);
+                appSettingsService.updateSettings(settings -> settings.setLastPwz(pwz));
+                pwzSelected = true;
+            }
+        } while (!pwzSelected);
+    }
 //    =============================================================================
-    public void monthSheetIdentityStage() {
-        AppSettings appSettings = sessionContext.getAppSettings();
+    public void monthSheetIdentityStage(AppSettings appSettings) {
 
-        MonthSheet lastMonthSheet = appSettings.getLastMonthSheet();
+        if(appSettings.getLastMonthSheet() != null){
 
-        if(lastMonthSheet != null){
+            MonthSheet lastMonthSheet = appSettings.getLastMonthSheet();
             sessionContext.setCurrentMonthSheet(lastMonthSheet);
 
             System.out.printf("%sЛист '%s' был автоматически выбран с прошлой сессии", jColorUtil.INFO,
@@ -256,12 +310,14 @@ public class ConsoleService {
             if(monthSheets.isEmpty()){
                 createNewMonthSheetInteractive(sessionContext.getCurrentPwz().getGoogleId());
             } else if(monthSheets.size() == 1){
-                System.out.printf("%sЛист '%s' был выбран с прошлого раза", jColorUtil.INFO,
+                MonthSheet monthSheet = monthSheets.getFirst();
+                System.out.printf("%sЛист '%s' был выбран автоматически", jColorUtil.INFO,
                         jColorUtil.turnTextIntoColor(
-                                dateUtil.getFullMonthSheetDate(monthSheets.getFirst()), JColorUtil.COLOR.INFO));
-                sessionContext.setCurrentMonthSheet(monthSheets.getFirst());
+                                dateUtil.getFullMonthSheetDate(monthSheet), JColorUtil.COLOR.INFO));
+
+                sessionContext.setCurrentMonthSheet(monthSheet);
                 appSettingsService.updateSettings(settings ->
-                        settings.setLastMonthSheet(monthSheets.getFirst()));
+                        settings.setLastMonthSheet(monthSheet));
             } else {
                 selectMonthSheetInteractive(monthSheets);
             }
@@ -273,7 +329,6 @@ public class ConsoleService {
         MonthSheet monthSheet = monthSheetService.createMonthSheet(pwzGoogleId);
 
         sessionContext.setCurrentMonthSheet(monthSheet);
-        appSettingsService.updateSettings(settings -> settings.setLastMonthSheet(monthSheet));
 
         monthSheetService.executeCreateMonthSheetInPwzSpreadsheet(monthSheet);
 
@@ -308,8 +363,8 @@ public class ConsoleService {
                 MonthSheet monthSheet = monthSheets.get(choiceNum - 1);
                 System.out.printf("Лист '%s' успешно выбран\n", //todo
                         dateUtil.getFullMonthSheetDate(monthSheet));
-                appSettingsService.updateSettings(settings -> settings.setLastMonthSheet(monthSheet));
                 sessionContext.setCurrentMonthSheet(monthSheet);
+                appSettingsService.updateSettings(settings -> settings.setLastMonthSheet(monthSheet));
                 monthSheetSelected = true;
             }
         } while (!monthSheetSelected);

@@ -15,7 +15,6 @@ public class ShiftSheetRunner implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-
         jColorUtil.printLogo();
         startupFlowService.runFlow();
     }
