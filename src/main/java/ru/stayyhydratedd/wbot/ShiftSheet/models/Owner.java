@@ -17,7 +17,7 @@ public class Owner {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")
-    private Integer id;
+    private int id;
 
     @Column(name = "name")
     @Getter
@@ -31,13 +31,13 @@ public class Owner {
 
     @ManyToMany
     @JoinTable(
-            name = "owner_pwz",
+            name = "owner_root_folder",
             joinColumns = @JoinColumn(name = "owner_id"),
-            inverseJoinColumns = @JoinColumn(name = "pwz_id")
+            inverseJoinColumns = @JoinColumn(name = "root_folder_id")
     )
     @Getter
     @ToString.Exclude
-    private Set<Pwz> pwzs;
+    private Set<RootFolder> rootFolders;
 
     public Owner(String name, String password) {
         this.name = name;

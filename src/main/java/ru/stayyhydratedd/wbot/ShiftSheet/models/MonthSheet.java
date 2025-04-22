@@ -4,6 +4,9 @@ import jakarta.persistence.*;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+import java.util.List;
 
 @Entity
 @Table(name = "month_sheet")
@@ -13,7 +16,7 @@ public class MonthSheet {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")
-    private Integer id;
+    private int id;
 
     @Column(name = "google_id")
     @Getter
@@ -26,23 +29,26 @@ public class MonthSheet {
 
     @Column(name = "month_num")
     @Getter
+    @Setter
     private Integer month;
 
     @Column(name = "year_num")
     @Getter
+    @Setter
     private Integer year;
 
-    @OneToOne(cascade = CascadeType.ALL)
-    @JoinColumn(name = "sheet_info_id", referencedColumnName = "id")
+    @OneToMany(mappedBy = "monthSheet")
     @Getter
-    private SheetInfo sheetInfo;
+    @Setter
+    private List<SheetInfo> sheetInfo;
 
     @Column(name = "pay_rate")
     @Getter
+    @Setter
     private Double payRate;
 
     @Builder
-    public MonthSheet(String googleId, Integer month, Integer year, Double payRate, Pwz pwz) {
+    public MonthSheet(String googleId, int month, int year, double payRate, Pwz pwz) {
         this.googleId = googleId;
         this.month = month;
         this.year = year;

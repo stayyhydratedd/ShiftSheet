@@ -3,6 +3,8 @@ package ru.stayyhydratedd.wbot.ShiftSheet.models;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.util.Set;
+
 @Entity
 @Table(name = "root_folder")
 @NoArgsConstructor
@@ -31,6 +33,8 @@ public class RootFolder {
     @ToString.Exclude
     private AppSettings appSettings;
 
+    @ManyToMany(mappedBy = "rootFolders")
+    private Set<Owner> owners;
 
     @Builder
     public RootFolder(String googleId, String title, Double payRate, AppSettings appSettings) {

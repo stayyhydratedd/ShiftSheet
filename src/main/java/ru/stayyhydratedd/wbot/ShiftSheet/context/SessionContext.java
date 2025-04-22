@@ -13,5 +13,6 @@ public class SessionContext {
     private RootFolder currentRootFolder;
     private Pwz currentPwz;
     private MonthSheet currentMonthSheet;
+    private Employee currentEmployee;
     private String currentPwzsFolderId;
 }

@@ -18,7 +18,7 @@ public class Pwz {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")
-    private Integer id;
+    private int id;
 
     @Column(name = "google_id")
     @Setter
@@ -32,16 +32,12 @@ public class Pwz {
     @Setter
     private Double payRate;
 
-    @ManyToMany(mappedBy = "pwzs")
-    @Setter
-    private Set<Owner> owners;
-
     @OneToMany(mappedBy = "pwz")
     @Setter
     private List<MonthSheet> monthSheets;
 
     @Builder
-    public Pwz(String googleId, String address, Double payRate) {
+    public Pwz(String googleId, String address, double payRate) {
         this.googleId = googleId;
         this.address = address;
         this.payRate = payRate;

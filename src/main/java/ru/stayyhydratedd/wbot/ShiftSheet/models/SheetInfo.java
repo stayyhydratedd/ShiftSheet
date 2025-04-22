@@ -9,9 +9,10 @@ public class SheetInfo {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")
-    private Integer id;
+    private int id;
 
-    @OneToOne
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "month_sheet_id", referencedColumnName = "id")
     private MonthSheet monthSheet;
 
     @ManyToOne
