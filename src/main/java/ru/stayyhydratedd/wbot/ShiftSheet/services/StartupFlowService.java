@@ -20,8 +20,8 @@ public class StartupFlowService {
 
     public void runFlow(){
         consoleService.ownerAuthenticationStage(ownerService.findAll());
-        consoleService.rootIdentityStage(sessionContext.getAppSettings());
-        rootFolderService.checkRootFolderForInternalFolders(sessionContext.getCurrentRootFolder());
+        consoleService.rootIdentityStage(sessionContext.getCurrentAppSettings().get());
+        rootFolderService.checkRootFolderForInternalFolders(sessionContext.getCurrentRootFolder().get());
         consoleService.showMainMenu();
 //        consoleService.pwzIdentityStage(sessionContext.getAppSettings());
 //        consoleService.monthSheetIdentityStage(sessionContext.getAppSettings());

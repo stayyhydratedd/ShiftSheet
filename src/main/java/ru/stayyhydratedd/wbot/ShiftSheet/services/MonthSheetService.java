@@ -38,7 +38,7 @@ public class MonthSheetService {
     public MonthSheet createMonthSheet(String pwzGoogleId) {
         int year = LocalDate.now().getYear();
         int month = LocalDate.now().getMonthValue();
-        Pwz currentPwz = sessionContext.getCurrentPwz();
+        Pwz currentPwz = sessionContext.getCurrentPwz().get();
         double payRate = currentPwz.getPayRate();
         MonthSheet monthSheet = MonthSheet.builder()
                 .googleId(pwzGoogleId)

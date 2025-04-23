@@ -1,10 +1,7 @@
 package ru.stayyhydratedd.wbot.ShiftSheet.models;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
-import lombok.ToString;
+import lombok.*;
 
 import java.util.Set;
 
@@ -39,6 +36,7 @@ public class Owner {
     @ToString.Exclude
     private Set<RootFolder> rootFolders;
 
+    @Builder
     public Owner(String name, String password) {
         this.name = name;
         this.password = password;

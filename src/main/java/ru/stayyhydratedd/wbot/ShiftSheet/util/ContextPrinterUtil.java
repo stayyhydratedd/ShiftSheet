@@ -26,7 +26,7 @@ public class ContextPrinterUtil {
         if(sessionContext.getCurrentEmployee() == null){
             currentEmployeeName = "не выбран";
         } else {
-            currentEmployeeName = sessionContext.getCurrentEmployee().getName();
+            currentEmployeeName = sessionContext.getCurrentEmployee().get().getName();
         }
         System.out.printf("""
                                 =======================%s========================

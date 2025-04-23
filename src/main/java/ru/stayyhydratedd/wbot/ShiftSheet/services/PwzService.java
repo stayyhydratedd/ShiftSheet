@@ -31,7 +31,7 @@ public class PwzService {
 
     public String createPwzFolder(String folderName) {
         return googleFileWorkerUtil.createFile(
-                folderName, "pwzs", MimeType.FOLDER, sessionContext.getCurrentPwzsFolderId());
+                folderName, "pwzs", MimeType.FOLDER, sessionContext.getCurrentPwzsFolderId().get());
     }
 
     public Pwz createPwz(String pwzAddress){
@@ -47,12 +47,12 @@ public class PwzService {
                         %sЭто значение можно будет изменить позже
                         """, jColorUtil.INFO,
                 jColorUtil.turnTextIntoColor(
-                        sessionContext.getCurrentRootFolder().getPayRate().toString(), JColorUtil.COLOR.INFO),
+                        sessionContext.getCurrentRootFolder().get().getPayRate().toString(), JColorUtil.COLOR.INFO),
                 jColorUtil.INFO);
         Pwz pwz = Pwz.builder()
                 .address(pwzAddress)
                 .googleId(pwzId)
-                .payRate(sessionContext.getCurrentRootFolder().getPayRate())
+                .payRate(sessionContext.getCurrentRootFolder().get().getPayRate())
                 .build();
 
         pwzRepository.save(pwz);
