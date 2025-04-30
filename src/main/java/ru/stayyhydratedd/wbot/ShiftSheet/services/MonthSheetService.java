@@ -7,10 +7,7 @@ import ru.stayyhydratedd.wbot.ShiftSheet.context.SessionContext;
 import ru.stayyhydratedd.wbot.ShiftSheet.models.MonthSheet;
 import ru.stayyhydratedd.wbot.ShiftSheet.models.Pwz;
 import ru.stayyhydratedd.wbot.ShiftSheet.repositories.MonthSheetRepository;
-import ru.stayyhydratedd.wbot.ShiftSheet.util.CellsUtil;
-import ru.stayyhydratedd.wbot.ShiftSheet.util.DateUtil;
-import ru.stayyhydratedd.wbot.ShiftSheet.util.GoogleFileWorkerUtil;
-import ru.stayyhydratedd.wbot.ShiftSheet.util.JColorUtil;
+import ru.stayyhydratedd.wbot.ShiftSheet.util.*;
 
 import java.io.IOException;
 import java.time.LocalDate;
@@ -22,10 +19,13 @@ public class MonthSheetService {
 
     private final MonthSheetRepository monthSheetRepository;
     private final SessionContext sessionContext;
+    private final PwzService pwzService;
     private final GoogleFileWorkerUtil googleFileWorkerUtil;
     private final JColorUtil jColorUtil;
     private final DateUtil dateUtil;
     private final CellsUtil cellsUtil;
+    private final PrinterUtil printer;
+    private final HelperUtil helper;
 
     public void save(MonthSheet monthSheet) {
         monthSheetRepository.save(monthSheet);
@@ -35,21 +35,31 @@ public class MonthSheetService {
         return monthSheetRepository.findAll();
     }
 
-    public MonthSheet createMonthSheet(String pwzGoogleId) {
+    public void createMonthSheet() {
+        if (sessionContext.getCurrentPwz().isEmpty()){
+            System.out.printf("%sУ вас не указан ПВЗ", jColorUtil.WARN);
+            return;
+        }
+        Optional<Pwz> foundPwz = pwzService.findById(sessionContext.getCurrentPwz().get().getId());
         int year = LocalDate.now().getYear();
         int month = LocalDate.now().getMonthValue();
-        Pwz currentPwz = sessionContext.getCurrentPwz().get();
-        double payRate = currentPwz.getPayRate();
+        if(foundPwz.isEmpty()){
+            System.out.printf("%sВозникла непредвиденная ошибка", jColorUtil.ERROR);
+            return;
+        }
+        Pwz pwz = foundPwz.get();
+        double payRate = pwz.getPayRate();
         MonthSheet monthSheet = MonthSheet.builder()
-                .googleId(pwzGoogleId)
+                .googleId(pwz.getGoogleId())
                 .year(year)
                 .month(month)
                 .payRate(payRate)
-                .pwz(currentPwz)
+                .pwz(pwz)
                 .build();
+
         save(monthSheet);
 
-        return monthSheet;
+//        return monthSheet; todo доделать
     }
     public void executeCreateMonthSheetInPwzSpreadsheet(MonthSheet monthSheet) {
 

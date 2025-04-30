@@ -9,7 +9,6 @@ import ru.stayyhydratedd.wbot.ShiftSheet.context.SessionContext;
 import ru.stayyhydratedd.wbot.ShiftSheet.enums.ChangeRootMethod;
 import ru.stayyhydratedd.wbot.ShiftSheet.enums.MimeType;
 import ru.stayyhydratedd.wbot.ShiftSheet.models.AppSettings;
-import ru.stayyhydratedd.wbot.ShiftSheet.models.Employee;
 import ru.stayyhydratedd.wbot.ShiftSheet.models.RootFolder;
 import ru.stayyhydratedd.wbot.ShiftSheet.models.User;
 import ru.stayyhydratedd.wbot.ShiftSheet.repositories.RootFolderRepository;
@@ -20,7 +19,6 @@ import ru.stayyhydratedd.wbot.ShiftSheet.util.JColorUtil;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -47,7 +45,7 @@ public class RootFolderService {
     }
 
     public Optional<RootFolder> findByGoogleId(String googleId) {
-        return rootFolderRepository.findByGoogleId(googleId);
+        return rootFolderRepository.findByGoogleIdWithPwzsAndUsers(googleId);
     }
 
     public Optional<File> createRootFolder(String folderName) {

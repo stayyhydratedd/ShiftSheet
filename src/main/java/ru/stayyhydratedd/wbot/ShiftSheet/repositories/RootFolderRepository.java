@@ -11,7 +11,14 @@ import java.util.Optional;
 @Repository
 public interface RootFolderRepository extends JpaRepository<RootFolder, Integer> {
 
-    Optional<RootFolder> findByGoogleId(String googleId);
+    @Query("""
+    SELECT r
+    FROM RootFolder r
+    LEFT JOIN FETCH r.pwzs
+    LEFT JOIN FETCH r.users
+    WHERE r.googleId = :googleId
+    """)
+    Optional<RootFolder> findByGoogleIdWithPwzsAndUsers(@Param("googleId") String googleId);
 
     @Query("""
     SELECT r

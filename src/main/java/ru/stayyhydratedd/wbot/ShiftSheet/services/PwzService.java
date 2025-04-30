@@ -36,6 +36,10 @@ public class PwzService {
         return pwzRepository.findAll();
     }
 
+    public Optional<Pwz> findById(int id) {
+        return pwzRepository.findByIdWithMonthSheets(id);
+    }
+
     public void save(Pwz pwz) {
         pwzRepository.save(pwz);
     }
@@ -60,9 +64,11 @@ public class PwzService {
                 jColorUtil.turnTextIntoColor(
                         sessionContext.getCurrentRootFolder().get().getPayRate().toString(), JColorUtil.COLOR.INFO),
                 jColorUtil.INFO);
+
         Pwz pwz = Pwz.builder()
                 .address(pwzAddress)
                 .googleId(pwzId)
+                .folderGoogleId(pwzFolderId)
                 .payRate(sessionContext.getCurrentRootFolder().get().getPayRate())
                 .build();
 
@@ -70,6 +76,7 @@ public class PwzService {
         return pwz;
     }
 
+//    todo @PreAuthorize
     public void createNewPwz(){
         AppSettings appSettings = sessionContext.getAppSettings();
         if(appSettings.getLastRootFolder().isEmpty()) {
@@ -110,7 +117,6 @@ public class PwzService {
                 String pwzAddress = parsed.get();
                 String pwzFolderId = createPwzFolder("ПВЗ " + pwzAddress);
                 String employeeWorkSchedule = "График работы сотрудников ул. " + pwzAddress;
-
 
                 File pwzFile = googleFileWorkerUtil.createFile(employeeWorkSchedule, "ПВЗ " + pwzAddress,
                         MimeType.SPREADSHEET, pwzFolderId);

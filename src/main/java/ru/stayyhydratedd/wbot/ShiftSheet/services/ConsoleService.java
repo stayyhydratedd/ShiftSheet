@@ -848,7 +848,13 @@ public class ConsoleService {
             }
             switch (parsed.get()){
                 case "1" -> changeCurrentPwzInteractiveMenu();
-                case "2" -> pwzService.createNewPwz();
+                case "2" -> {
+                    pwzService.createNewPwz();
+                    if (inputUtil.askYesOrNo("Хотите создать новый",
+                            "месячный лист", JColorUtil.COLOR.INFO)) {
+                        monthSheetService.createMonthSheet();
+                    }
+                }
                 case "3" -> {}
                 case "4" -> {}
                 case "0", "/back" -> {

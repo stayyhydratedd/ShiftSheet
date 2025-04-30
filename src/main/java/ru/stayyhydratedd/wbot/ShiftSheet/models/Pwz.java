@@ -23,6 +23,9 @@ public class Pwz {
     @Column(name = "google_id")
     private String googleId;
 
+    @Column(name = "folder_google_id")
+    private String folderGoogleId;
+
     @Column(name = "address")
     private String address;
 
@@ -37,8 +40,9 @@ public class Pwz {
     private RootFolder rootFolder;
 
     @Builder
-    public Pwz(String googleId, String address, double payRate, RootFolder rootFolder) {
+    public Pwz(String googleId, String folderGoogleId, String address, double payRate, RootFolder rootFolder) {
         this.googleId = googleId;
+        this.folderGoogleId = folderGoogleId;
         this.address = address;
         this.payRate = payRate;
         this.rootFolder = rootFolder;
