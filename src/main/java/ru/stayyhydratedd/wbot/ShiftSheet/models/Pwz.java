@@ -7,9 +7,9 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.util.List;
-import java.util.Set;
 
 @Getter
+@Setter
 @Entity
 @Table(name = "pwz")
 @NoArgsConstructor
@@ -21,25 +21,26 @@ public class Pwz {
     private int id;
 
     @Column(name = "google_id")
-    @Setter
     private String googleId;
 
     @Column(name = "address")
-    @Setter
     private String address;
 
     @Column(name = "pay_rate")
-    @Setter
     private Double payRate;
 
-    @OneToMany(mappedBy = "pwz")
-    @Setter
+    @OneToMany(mappedBy = "pwz", cascade = CascadeType.REMOVE, orphanRemoval = true)
     private List<MonthSheet> monthSheets;
 
+    @ManyToOne
+    @JoinColumn(name = "root_folder_id", referencedColumnName = "id")
+    private RootFolder rootFolder;
+
     @Builder
-    public Pwz(String googleId, String address, double payRate) {
+    public Pwz(String googleId, String address, double payRate, RootFolder rootFolder) {
         this.googleId = googleId;
         this.address = address;
         this.payRate = payRate;
+        this.rootFolder = rootFolder;
     }
 }

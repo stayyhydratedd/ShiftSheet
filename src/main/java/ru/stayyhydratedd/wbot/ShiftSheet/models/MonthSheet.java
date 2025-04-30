@@ -37,7 +37,7 @@ public class MonthSheet {
     @Setter
     private Integer year;
 
-    @OneToMany(mappedBy = "monthSheet")
+    @OneToMany(mappedBy = "monthSheet", cascade = CascadeType.REMOVE, orphanRemoval = true)
     @Getter
     @Setter
     private List<SheetInfo> sheetInfo;

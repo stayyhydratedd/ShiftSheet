@@ -29,12 +29,12 @@ public class EmployeeValidator implements Validator {
             errors.rejectValue("name", null,
                     "Сотрудник с таким именем уже существует");
         }
-        foundEmployee = employeeService.findEmployeeByGmail(employee.getGmail());
+        foundEmployee = employeeService.findEmployeeByGmail(employee.getGmail().get());
         if(foundEmployee.isPresent()) {
             errors.rejectValue("gmail", null,
                     "Сотрудник с таким gmail уже существует");
         }
-        foundEmployee = employeeService.findEmployeeByPhoneNumber(employee.getPhoneNumber());
+        foundEmployee = employeeService.findEmployeeByPhoneNumber(employee.getPhoneNumber().get());
         if(foundEmployee.isPresent()) {
             errors.rejectValue("phoneNumber", null,
                     "Сотрудник с таким номером телефона уже существует");

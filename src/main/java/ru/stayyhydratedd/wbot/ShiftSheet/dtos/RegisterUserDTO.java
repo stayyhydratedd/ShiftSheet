@@ -3,9 +3,9 @@ package ru.stayyhydratedd.wbot.ShiftSheet.dtos;
 import lombok.Data;
 
 @Data
-public class OwnerDTO {
+public class RegisterUserDTO {
 
-    private String name;
+    private String username;
 
     private String password;
 

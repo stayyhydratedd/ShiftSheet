@@ -8,21 +8,18 @@ import ru.stayyhydratedd.wbot.ShiftSheet.context.SessionContext;
 @RequiredArgsConstructor
 public class StartupFlowService {
 
-    private final OwnerService ownerService;
-    private final RootFolderService rootFolderService;
-    private final EmployeeService employeeService;
-    private final PwzService pwzService;
-    private final MonthSheetService monthSheetService;
-    private final SheetInfoService sheetInfoService;
+    private final UserService userService;
     private final ConsoleService consoleService;
 
     private final SessionContext sessionContext;
 
     public void runFlow(){
-        consoleService.ownerAuthenticationStage(ownerService.findAll());
-        consoleService.rootIdentityStage(sessionContext.getCurrentAppSettings().get());
-        rootFolderService.checkRootFolderForInternalFolders(sessionContext.getCurrentRootFolder().get());
-        consoleService.showMainMenu();
+        consoleService.userAuthenticationStage(userService.findAll());
+        consoleService.initializeSettings();
+        consoleService.setPayRateForAppSettingsInteractive();
+        consoleService.rootIdentityStage(sessionContext.getAppSettings());
+        consoleService.pwzIdentityStage(sessionContext.getAppSettings());
+        consoleService.mainMenu();
 //        consoleService.pwzIdentityStage(sessionContext.getAppSettings());
 //        consoleService.monthSheetIdentityStage(sessionContext.getAppSettings());
     }

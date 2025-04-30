@@ -1,34 +1,33 @@
 package ru.stayyhydratedd.wbot.ShiftSheet.context;
 
+import lombok.Getter;
 import lombok.Setter;
 import org.springframework.stereotype.Component;
 import ru.stayyhydratedd.wbot.ShiftSheet.models.*;
 
 import java.util.Optional;
 
+@Setter
 @Component
 public class SessionContext {
 
-    @Setter
+    @Getter
     private AppSettings appSettings;
-    @Setter
-    private Owner currentOwner;
-    @Setter
+
+    private User currentUser;
+
     private RootFolder currentRootFolder;
-    @Setter
+
     private Pwz currentPwz;
-    @Setter
+
     private MonthSheet currentMonthSheet;
-    @Setter
+
     private Employee currentEmployee;
-    @Setter
+
     private String currentPwzsFolderId;
 
-    public Optional<AppSettings> getCurrentAppSettings() {
-        return Optional.ofNullable(appSettings);
-    }
-    public Optional<Owner> getCurrentOwner() {
-        return Optional.ofNullable(currentOwner);
+    public Optional<User> getCurrentUser() {
+        return Optional.ofNullable(currentUser);
     }
     public Optional<RootFolder> getCurrentRootFolder() {
         return Optional.ofNullable(currentRootFolder);
@@ -46,3 +45,4 @@ public class SessionContext {
         return Optional.ofNullable(currentPwzsFolderId);
     }
 }
+

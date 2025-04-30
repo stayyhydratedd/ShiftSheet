@@ -2,18 +2,17 @@ package ru.stayyhydratedd.wbot.ShiftSheet.services;
 
 import com.google.api.services.sheets.v4.model.Sheet;
 import lombok.RequiredArgsConstructor;
-import org.intellij.lang.annotations.Language;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.stereotype.Service;
 import ru.stayyhydratedd.wbot.ShiftSheet.context.ConditionContextManager;
 import ru.stayyhydratedd.wbot.ShiftSheet.context.SessionContext;
-import ru.stayyhydratedd.wbot.ShiftSheet.dtos.OwnerDTO;
+import ru.stayyhydratedd.wbot.ShiftSheet.controllers.ConsoleController;
+import ru.stayyhydratedd.wbot.ShiftSheet.dtos.AuthUserDTO;
+import ru.stayyhydratedd.wbot.ShiftSheet.dtos.RegisterUserDTO;
+import ru.stayyhydratedd.wbot.ShiftSheet.enums.ChangeRootMethod;
 import ru.stayyhydratedd.wbot.ShiftSheet.enums.ConditionContext;
 import ru.stayyhydratedd.wbot.ShiftSheet.models.*;
-import ru.stayyhydratedd.wbot.ShiftSheet.util.DateUtil;
-import ru.stayyhydratedd.wbot.ShiftSheet.util.ContextPrinterUtil;
-import ru.stayyhydratedd.wbot.ShiftSheet.util.InputOutputUtil;
-import ru.stayyhydratedd.wbot.ShiftSheet.util.JColorUtil;
+import ru.stayyhydratedd.wbot.ShiftSheet.util.*;
 
 import java.util.*;
 
@@ -21,7 +20,8 @@ import java.util.*;
 @RequiredArgsConstructor
 public class ConsoleService {
 
-    private final OwnerService ownerService;
+    private final UserService userService;
+    private final RoleService roleService;
     private final AppSettingsService appSettingsService;
     private final RootFolderService rootFolderService;
     private final PwzService pwzService;
@@ -29,51 +29,242 @@ public class ConsoleService {
     private final EmployeeService employeeService;
     private final SessionContext sessionContext;
     private final ConditionContextManager contextManager;
-    private final PasswordEncoder passwordEncoder;
     private final JColorUtil jColorUtil;
-    private final InputOutputUtil inputOutputUtil;
+    private final InputOutputUtil inputUtil;
     private final DateUtil dateUtil;
-    private final ContextPrinterUtil printer;
-    private final Scanner scanner = new Scanner(System.in);
+    private final PrinterUtil printer;
+    private final HelperUtil helper;
+    private final SalaryCalculatorUtil salaryCalculator;
 
-    private static final Map<String, String> COMMANDS = new HashMap<>(){{
-        put("help", "/help");
-        put("back", "/back");
-    }};
+    private final ConsoleController consoleController; //todo контроллер не должен использоваться в сервисе
 
 //    =============================================================================
-    public void showMainMenu(){
+    public void mainMenu(){
         contextManager.enterContext(ConditionContext.MAIN_MENU);
         while(true){
-            System.out.printf("""
-                    =========================%s=========================
-                    %s. Работа с корневой папкой %s
-                    %s. Работа с ПВЗ %s
-                    %s. Работа с листом графика %s
-                    %s. Работа с сотрудниками %s
-                    %s. Вернуться к выбору владельца %s
-                    """, jColorUtil.turnTextIntoColor("ГЛАВНАЯ", JColorUtil.COLOR.SUCCESS),
-                    jColorUtil.turnTextIntoColor("1", JColorUtil.COLOR.INFO),
-                    jColorUtil.turnTextIntoColor("->", JColorUtil.COLOR.INFO),
-                    jColorUtil.turnTextIntoColor("2", JColorUtil.COLOR.INFO),
-                    jColorUtil.turnTextIntoColor("->", JColorUtil.COLOR.INFO),
-                    jColorUtil.turnTextIntoColor("3", JColorUtil.COLOR.INFO),
-                    jColorUtil.turnTextIntoColor("->", JColorUtil.COLOR.INFO),
-                    jColorUtil.turnTextIntoColor("4", JColorUtil.COLOR.INFO),
-                    jColorUtil.turnTextIntoColor("->", JColorUtil.COLOR.INFO),
-                    jColorUtil.turnTextIntoColor("0", JColorUtil.COLOR.WARN),
-                    jColorUtil.turnTextIntoColor("<-", JColorUtil.COLOR.WARN)
-            );
-            Optional<String> parsed = parseInput("[01234]");
+
+            printer.printInfo(contextManager.getCurrentContext());
+
+            Optional<String> parsed = inputUtil.parseInput("[01234]", "(/help|/back)");
+
             if (parsed.isEmpty()){
                 System.out.printf("%sУказано неверное значение\n", jColorUtil.ERROR);
                 continue;
             }
-            if (parsed.get().equals("4")){
-                employeeMenu();
+
+            switch (parsed.get()){
+                case "1" -> rootFolderMenu();
+                case "2" -> pwzMenu();
+                case "3" -> monthSheetMenu();
+                case "4" -> employeeMenu();
+                case "0", "/back" -> {
+                    //todo: logout method
+                    return;
+                }
+                case "/help" -> {
+                    helper.getHelp(contextManager.getCurrentContext());
+                }
             }
         }
     }
+//    -----------------------------------------------------------------------------
+    public void rootFolderMenu(){
+        contextManager.enterContext(ConditionContext.ROOT_FOLDER_MENU);
+        boolean printMenuInfo = true;
+        while(true){
+            if (printMenuInfo){
+                printer.printInfo(contextManager.getCurrentContext());
+            }
+            printMenuInfo = true;
+
+            Optional<String> parsed = inputUtil.parseInput("[0-4]", "(/help|/back)");
+            if (parsed.isEmpty()){
+                printMenuInfo = false;
+                System.out.printf("%sУказано неверное значение\n", jColorUtil.ERROR);
+                continue;
+            }
+            switch (parsed.get()){
+                case "1" -> changeCurrentRootFolderInteractive(contextManager.getCurrentContext());
+                case "2" -> rootFolderService.deleteRootFolder();
+                case "3" -> salaryCalculator.calculateSalary(contextManager.getCurrentContext());
+                case "4" -> currentRootFolderDataMenu();
+                case "0", "/back" -> {
+                    contextManager.exitContext();
+                    return;
+                }
+                case "/help" -> {
+                    helper.getHelp(contextManager.getCurrentContext());
+                }
+            }
+        }
+    }
+
+    public void changeCurrentRootFolderInteractive(ConditionContext callContext) {
+        if (callContext.equals(ConditionContext.ROOT_FOLDER_MENU)) {
+            contextManager.enterContext(ConditionContext.CHANGE_CURRENT_ROOT_FOLDER_FROM_ROOT_FOLDER_MENU);
+        } else if (callContext.equals(ConditionContext.ROOT_IDENTITY)) {
+            contextManager.enterContext(ConditionContext.CHANGE_CURRENT_ROOT_FOLDER_FROM_ROOT_IDENTITY);
+        }
+        while (true) {
+
+            printer.printInfo(contextManager.getCurrentContext());
+
+            Optional<String> parsed = inputUtil.parseInput("[0-3]", "(/help|/back)");
+            if (parsed.isEmpty()) {
+                System.out.printf("%sУказано неверное значение\n", jColorUtil.ERROR);
+                continue;
+            }
+
+            try {
+                if (contextManager.getCurrentContext().equals(ConditionContext.CHANGE_CURRENT_ROOT_FOLDER_FROM_ROOT_FOLDER_MENU)){
+                    switch (parsed.get()) {
+                        case "1" -> rootFolderService.changeCurrentRootFolderOnExist(ChangeRootMethod.GOOGLE_ID);
+                        case "2" -> rootFolderService.changeCurrentRootFolderOnExist(ChangeRootMethod.TITLE);
+                        case "3" -> rootFolderService.createNewRootFolderInteractive();
+                        case "0", "/back" -> {
+                            contextManager.exitContext();
+                            return;
+                        }
+                        case "/help" -> {
+                        }
+                    }
+                } else {
+                    switch (parsed.get()) {
+                        case "1" -> {
+                            rootFolderService.changeCurrentRootFolderOnExist(ChangeRootMethod.GOOGLE_ID);
+                            contextManager.exitContext();
+                            return;
+                        }
+                        case "2" -> {
+                            rootFolderService.changeCurrentRootFolderOnExist(ChangeRootMethod.TITLE);
+                            contextManager.exitContext();
+                            return;
+                        }
+                        case "3" -> {
+                            rootFolderService.createNewRootFolderInteractive();
+                            contextManager.exitContext();
+                            return;
+                        }
+                        case "0", "/back" -> {
+                            contextManager.exitContext();
+                            return;
+                        }
+                        case "/help" -> {
+                        }
+                    }
+                }
+            } catch (AuthorizationDeniedException e) {
+                System.out.printf("%sУ вас нет прав для выполнения этой операции\n", jColorUtil.ERROR);
+            }
+        }
+    }
+
+    public void currentRootFolderDataMenu(){
+        if (sessionContext.getCurrentRootFolder().isEmpty()){
+            System.out.printf("%sНе выбрана корневая папка, выберите ее, чтобы посмотреть данные о ней\n",
+                    jColorUtil.WARN);
+        } else {
+            contextManager.enterContext(ConditionContext.CURRENT_ROOT_FOLDER_DATA_MENU);
+            boolean printMenuInfo = true;
+            while (true) {
+                if (printMenuInfo){
+                    printer.printInfo(contextManager.getCurrentContext());
+                }
+                printMenuInfo = true;
+                Optional<String> parsed = inputUtil.parseInput("[0-2]", "(/help|/back)");
+
+                if (parsed.isEmpty()) {
+                    printMenuInfo = false;
+                    System.out.printf("%sУказано неверное значение\n", jColorUtil.ERROR);
+                    continue;
+                }
+                String input = parsed.get();
+
+                switch (input) {
+                    case "1" -> getDataCurrentRootFolder();
+                    case "2" -> editDataCurrentRootFolder();
+                    case "0", "/back" -> {
+                        contextManager.exitContext();
+                        return;
+                    }
+                    case "/help" -> {
+                        helper.getHelp(contextManager.getCurrentContext());
+                        printMenuInfo = false;
+                    }
+                }
+            }
+        }
+    }
+    public void getDataCurrentRootFolder(){
+        RootFolder currentRootFolder;
+        if(sessionContext.getCurrentRootFolder().isPresent()){
+            currentRootFolder = rootFolderService.findById(sessionContext.getCurrentRootFolder().get().getId()).orElseThrow();
+        } else {
+            return;
+        }
+        System.out.printf("""
+                Имя корневой папки: %s
+                Google id: %s
+                Ставка: %s
+                Дата создания: %s
+                """, jColorUtil.turnTextIntoColor(currentRootFolder.getTitle(), JColorUtil.COLOR.INFO),
+                jColorUtil.turnTextIntoColor(currentRootFolder.getGoogleId(), JColorUtil.COLOR.INFO),
+                jColorUtil.turnTextIntoColor(currentRootFolder.getPayRate().toString(), JColorUtil.COLOR.INFO),
+                jColorUtil.turnTextIntoColor(currentRootFolder.getCreatedTime().toString(), JColorUtil.COLOR.INFO));
+
+        StringBuilder builder = new StringBuilder();
+        List<Pwz> pwzs = currentRootFolder.getPwzs();
+        if(pwzs.isEmpty()){
+            builder.append(String.format("ПВЗ: %s\n",
+                    jColorUtil.turnTextIntoColor("не найдено", JColorUtil.COLOR.INFO)));
+        } else {
+            builder.append(String.format("ПВЗ: %s\n", jColorUtil.turnTextIntoColor("[", JColorUtil.COLOR.SUCCESS)));
+            int pwzNum = 1;
+            for (Pwz pwz : pwzs) {
+                builder.append(String.format("   %s. %s\n", pwzNum++,
+                        jColorUtil.turnTextIntoColor(pwz.getAddress(), JColorUtil.COLOR.INFO)));
+            }
+            builder.append(String.format("%s\n", jColorUtil.turnTextIntoColor("]", JColorUtil.COLOR.SUCCESS)));
+        }
+        System.out.print(builder);
+        builder.setLength(0);
+        builder.append(String.format("Пользователи, имеющие доступ: %s\n",
+                jColorUtil.turnTextIntoColor("[", JColorUtil.COLOR.SUCCESS)));
+
+        Set<User> users = currentRootFolder.getUsers();
+        int userNum = 1;
+        for(User user : users){
+            builder.append(String.format("   %s. %s\n", userNum++,
+                    jColorUtil.turnTextIntoColor(user.getUsername(), JColorUtil.COLOR.INFO)));
+        }
+        builder.append(String.format("%s\n", jColorUtil.turnTextIntoColor("]", JColorUtil.COLOR.SUCCESS)));
+        System.out.print(builder);
+    }
+
+    public void editDataCurrentRootFolder(){
+        contextManager.enterContext(ConditionContext.EDIT_CURRENT_ROOT_FOLDER_DATA_MENU);
+        while(true){
+            printer.printInfo(contextManager.getCurrentContext());
+            Optional<String> parsed = inputUtil.parseInput("[0-2]");
+            if (parsed.isEmpty()) {
+                continue;
+            }
+            switch (parsed.get()) {
+                case "1" -> rootFolderService.renameRootFolder();
+                case "2" -> rootFolderService.changePayRate();
+                case "3" -> {} //todo: добавить пвз
+                case "4" -> {} //todo: удалить пвз
+                case "5" -> {} //todo: открыть доступ пользователю
+                case "6" -> {} //todo: закрыть доступ пользователю
+                case "0", "/back" -> {
+                    contextManager.exitContext();
+                    return;
+                }
+                case "/help" -> {}
+            }
+        }
+    }
+
 //    -----------------------------------------------------------------------------
     public void employeeMenu(){
         contextManager.enterContext(ConditionContext.EMPLOYEE_MENU);
@@ -84,8 +275,9 @@ public class ConsoleService {
             }
             printMenuInfo = true;
 
-            Optional<String> parsed = parseInput("[012345]", "(/help|/back)");
+            Optional<String> parsed = inputUtil.parseInput("[01234]", "(/help|/back)");
             if (parsed.isEmpty()){
+                printMenuInfo = false;
                 System.out.printf("%sУказано неверное значение\n", jColorUtil.ERROR);
                 continue;
             }
@@ -93,54 +285,35 @@ public class ConsoleService {
             String input = parsed.get();
 
             switch (input){
-                case "1" -> selectCurrentEmployeeInteractive();
-                case "2" -> {
-                    createNewEmployeeInteractive();
-                }
-                case "3" -> System.out.println("3");
-                case "4" -> System.out.println("4");
-                case "5" -> System.out.println("5");
+                case "1" -> changeCurrentEmployeeInteractive();
+                case "2" -> createNewEmployeeInteractive();
+                case "3" -> deleteCurrentEmployeeInteractive();
+                case "4" -> currentEmployeeDataMenu();
                 case "0", "/back" -> {
                     contextManager.exitContext();
                     return;
                 }
                 case "/help" -> {
-                    printer.printInfo(ConditionContext.EMPLOYEE_MENU_HELP);
+                    helper.getHelp(contextManager.getCurrentContext());
                     printMenuInfo = false;
                 }
             }
         }
     }
-    public void selectCurrentEmployeeInteractive(){
-        contextManager.enterContext(ConditionContext.SELECT_CURRENT_EMPLOYEE_INTERACTIVE);
+
+    public void changeCurrentEmployeeInteractive(){
+        contextManager.enterContext(ConditionContext.CHANGE_CURRENT_EMPLOYEE);
         List<Employee> employees = employeeService.findAll();
 
         if (employees.isEmpty()){
             System.out.printf("%sСотрудников не найдено\n", jColorUtil.INFO);
 
-            boolean printQuestion = true;
-            while (true){
-                if (printQuestion){
-                    System.out.printf("%sСоздать нового сотрудника? (y/n)\n", jColorUtil.INFO);
-                }
-                printQuestion = false;
-                Optional<String> parsed = parseInput("[yYnN]", "(/help|/back)");
-                if (parsed.isEmpty()){
-                    System.out.printf("%sУказано неверное значение\n", jColorUtil.ERROR);
-                } else {
-                    if (parsed.get().matches(COMMANDS.get("help"))){
-                        printer.printInfo(contextManager.getCurrentContext());
-                        printQuestion = true;
-                        continue;
-                    }
-                    if (parsed.get().equalsIgnoreCase("y")){
-                        Optional<Employee> createdEmployee = createNewEmployeeInteractive();
-                        createdEmployee.ifPresent(sessionContext::setCurrentEmployee);
-                    }
-                    contextManager.exitContext();
-                    return;
-                 }
+            String question = "Создать нового сотрудника";
+            if (inputUtil.askYesOrNo(question, "", JColorUtil.COLOR.INFO)){
+                Optional<Employee> createdEmployee = createNewEmployeeInteractive();
+                createdEmployee.ifPresent(sessionContext::setCurrentEmployee);
             }
+            contextManager.exitContext();
         } else if (employees.size() == 1){
             System.out.printf("%sНайден всего один сотрудник, он будет выбран автоматически\n", jColorUtil.INFO);
             contextManager.exitContext();
@@ -154,7 +327,7 @@ public class ConsoleService {
                         employee.getName());
             }
             while (true) {
-                Optional<String> parsed = parseInput("\\d+");
+                Optional<String> parsed = inputUtil.parseInput("\\d+");
                 if (parsed.isEmpty()) {
                     System.out.printf("%sУказано неверное значение\n", jColorUtil.ERROR);
                 } else {
@@ -170,12 +343,16 @@ public class ConsoleService {
                             if(sessionContext.getCurrentEmployee().get().equals(employee)){
                                 System.out.printf("%sСотрудник '%s' уже был выбран\n", jColorUtil.INFO,
                                         jColorUtil.turnTextIntoColor(employee.getName(), JColorUtil.COLOR.INFO));
+
+                                contextManager.exitContext();
+                                return;
                             }
-                        } else {
-                            System.out.printf("%sСотрудник '%s' успешно выбран\n", jColorUtil.SUCCESS,
-                                    jColorUtil.turnTextIntoColor(employee.getName(), JColorUtil.COLOR.SUCCESS));
-                            sessionContext.setCurrentEmployee(employee);
                         }
+
+                        System.out.printf("%sСотрудник '%s' успешно выбран\n", jColorUtil.SUCCESS,
+                                jColorUtil.turnTextIntoColor(employee.getName(), JColorUtil.COLOR.SUCCESS));
+                        sessionContext.setCurrentEmployee(employee);
+
                         contextManager.exitContext();
                         return;
                     }
@@ -190,11 +367,15 @@ public class ConsoleService {
 
         Employee.EmployeeBuilder employeeBuilder = Employee.builder();
 
-        Optional<String> optionalName = setNameForEmployeeInteractive();
+        Optional<String> optionalName = setNameForEmployeeInteractive(false, false);
 
-        setGmailForEmployeeInteractive(employeeBuilder);
-        setPhoneNumberForEmployeeInteractive(employeeBuilder);
-        setPayRateForEmployeeInteractive(employeeBuilder);
+        String question = "Пропустить ввод поля";
+        setGmailForEmployeeInteractive(employeeBuilder,
+                inputUtil.askYesOrNo(question, "gmail", JColorUtil.COLOR.INFO), false);
+        setPhoneNumberForEmployeeInteractive(employeeBuilder,
+                inputUtil.askYesOrNo(question, "номера телефона", JColorUtil.COLOR.INFO), false);
+        setPayRateForEmployeeInteractive(employeeBuilder,
+                inputUtil.askYesOrNo(question, "ставки", JColorUtil.COLOR.INFO), false);
 
         if (optionalName.isPresent()){
             employeeBuilder.name(optionalName.get());
@@ -209,63 +390,264 @@ public class ConsoleService {
         }
     }
 
-    private Optional<String> setNameForEmployeeInteractive() {
-        boolean firstInputAttempt = true;
-        while (true) {
-            if (firstInputAttempt) {
-                System.out.printf("%sВведите имя:\n", jColorUtil.INFO);
-            } else {
-                System.out.printf("%sВведите другое имя:\n", jColorUtil.INFO);
+    public void deleteCurrentEmployeeInteractive() {
+        if (sessionContext.getCurrentEmployee().isEmpty()){
+            System.out.printf("%sНе выбран сотрудник, выберите его, перед тем как производить удаление\n",
+                    jColorUtil.WARN);
+            changeCurrentEmployeeInteractive();
+        } else {
+            Employee currentEmployee = sessionContext.getCurrentEmployee().get();
+
+            String question = "Вы действительно хотите удалить сотрудника";
+            if(inputUtil.askYesOrNo(question, "'" + currentEmployee.getName() + "'", JColorUtil.COLOR.WARN)){
+                employeeService.delete(currentEmployee);
+                sessionContext.setCurrentEmployee(null);
+                System.out.printf("%sСотрудник '%s' был успешно удален\n", jColorUtil.SUCCESS,
+                        jColorUtil.turnTextIntoColor(currentEmployee.getName(), JColorUtil.COLOR.SUCCESS));
             }
+        }
+    }
 
-            firstInputAttempt = false;
+    public void currentEmployeeDataMenu() {
+        if (sessionContext.getCurrentEmployee().isEmpty()){
+            System.out.printf("%sНе выбран сотрудник, выберите его, чтобы посмотреть данные о нем\n",
+                    jColorUtil.WARN);
+            changeCurrentEmployeeInteractive();
+        } else {
+            contextManager.enterContext(ConditionContext.CURRENT_EMPLOYEE_DATA_MENU);
+            boolean printMenuInfo = true;
+            while (true) {
+                if (printMenuInfo){
+                    printer.printInfo(contextManager.getCurrentContext());
+                }
+                printMenuInfo = true;
+                Optional<String> parsed = inputUtil.parseInput("[012]", "(/help|/back)");
 
-            Optional<String> parsedName = parseInput("^[А-Яа-яЁё]{2,}([ .-]?[А-Яа-яЁё]+)*$", "(/help|/back)");
-            if (parsedName.isEmpty()) {
-                System.out.printf("""
-                                %sНекорректное имя
-                                %sВведите '%s' для получения справки
-                                """, jColorUtil.ERROR, jColorUtil.INFO,
-                        jColorUtil.turnTextIntoColor("/help", JColorUtil.COLOR.INFO));
-            } else {
-                String command = parsedName.get();
-                if (command.matches(COMMANDS.get("help"))) {
-                    firstInputAttempt = true;
-//                    printer.print
+                if (parsed.isEmpty()) {
+                    printMenuInfo = false;
+                    System.out.printf("%sУказано неверное значение\n", jColorUtil.ERROR);
                     continue;
                 }
-                if (command.matches(COMMANDS.get("back"))) {
-                    return Optional.empty();
-                } else {
-                    String name = parsedName.get();
-                    Optional<Employee> foundEmployeeByName = employeeService.findEmployeeByName(name);
-                    if (foundEmployeeByName.isPresent()) {
-                        System.out.printf("""
-                                        %sСотрудник с таким именем уже существует
-                                        %sВведите '%s' для получения справки
-                                        """, jColorUtil.WARN, jColorUtil.INFO,
-                                jColorUtil.turnTextIntoColor("/help", JColorUtil.COLOR.WARN));
-                        continue;
+                String input = parsed.get();
+
+                switch (input) {
+                    case "1" -> getDataCurrentEmployee();
+                    case "2" -> editDataCurrentEmployee();
+                    case "0", "/back" -> {
+                        contextManager.exitContext();
+                        return;
                     }
-                    System.out.printf("%sИмя '%s' успешно указано\n", jColorUtil.SUCCESS, jColorUtil.turnTextIntoColor(
-                            name, JColorUtil.COLOR.SUCCESS));
-                    return Optional.of(name);
+                    case "/help" -> {
+                        helper.getHelp(contextManager.getCurrentContext());
+                        printMenuInfo = false;
+                    }
                 }
             }
         }
     }
 
-    private void setGmailForEmployeeInteractive(Employee.EmployeeBuilder builder) {
-        if(!isSkipField("gmail")){
+    private void getDataCurrentEmployee() {
+        Employee currentEmployee;
+        if (sessionContext.getCurrentEmployee().isPresent()){
+            currentEmployee = sessionContext.getCurrentEmployee().get();
+        } else {
+            return;
+        }
+        String name = currentEmployee.getName();
+        String gmailOrNotSpecified = "не указано";
+        String phoneNumberOrNotSpecified = "не указано";
+        String payRateOrNotSpecified = "не указано";
+        if (currentEmployee.getGmail().isPresent()){
+            gmailOrNotSpecified = currentEmployee.getGmail().get();
+        }
+        if (currentEmployee.getPhoneNumber().isPresent()){
+            phoneNumberOrNotSpecified = currentEmployee.getPhoneNumber().get();
+        }
+        if (currentEmployee.getPayRate().isPresent()){
+            payRateOrNotSpecified = currentEmployee.getPayRate().get().toString();
+        }
+        System.out.printf("""
+                Имя сотрудника: %s
+                Gmail: %s
+                Номер телефона: %s
+                Ставка: %s
+                """, jColorUtil.turnTextIntoColor(name, JColorUtil.COLOR.INFO),
+                jColorUtil.turnTextIntoColor(gmailOrNotSpecified, JColorUtil.COLOR.INFO),
+                jColorUtil.turnTextIntoColor(phoneNumberOrNotSpecified, JColorUtil.COLOR.INFO),
+                jColorUtil.turnTextIntoColor(payRateOrNotSpecified, JColorUtil.COLOR.INFO));
+    }
+
+    private void editDataCurrentEmployee() {
+        Employee currentEmployee = sessionContext.getCurrentEmployee().orElseThrow();
+        Employee.EmployeeBuilder employeeBuilder = Employee.builder();
+        employeeBuilder
+                .id(currentEmployee.getId())
+                .name(currentEmployee.getName());
+        if (currentEmployee.getGmail().isPresent()){
+            employeeBuilder.gmail(currentEmployee.getGmail().get());
+        }
+        if (currentEmployee.getPhoneNumber().isPresent()){
+            employeeBuilder.phoneNumber(currentEmployee.getPhoneNumber().get());
+        }
+        if (currentEmployee.getPayRate().isPresent()){
+            employeeBuilder.payRate(currentEmployee.getPayRate().get());
+        }
+        while (true){
+            System.out.printf("""
+                    ================%s================
+                    %sВыберите поле для изменения:
+                    %s. Имя сотрудника %s
+                    %s. Gmail %s
+                    %s. Номер телефона %s
+                    %s. Ставка %s
+                    %s. Вернуться назад %s
+                    """, jColorUtil.turnTextIntoColor("РЕДАКТИРОВАНИЕ_СОТРУДНИКА", JColorUtil.COLOR.SUCCESS),
+                    jColorUtil.INFO,
+                    jColorUtil.turnTextIntoColor("1", JColorUtil.COLOR.INFO),
+                    jColorUtil.turnTextIntoColor("->", JColorUtil.COLOR.INFO),
+                    jColorUtil.turnTextIntoColor("2", JColorUtil.COLOR.INFO),
+                    jColorUtil.turnTextIntoColor("->", JColorUtil.COLOR.INFO),
+                    jColorUtil.turnTextIntoColor("3", JColorUtil.COLOR.INFO),
+                    jColorUtil.turnTextIntoColor("->", JColorUtil.COLOR.INFO),
+                    jColorUtil.turnTextIntoColor("4", JColorUtil.COLOR.INFO),
+                    jColorUtil.turnTextIntoColor("->", JColorUtil.COLOR.INFO),
+                    jColorUtil.turnTextIntoColor("0", JColorUtil.COLOR.WARN),
+                    jColorUtil.turnTextIntoColor("<-", JColorUtil.COLOR.WARN)
+                    );
+            Optional<String> parsed = inputUtil.parseInput("[01234]", "(/help|/back)");
+            if (parsed.isEmpty()) {
+                System.out.printf("%sУказано неверное значение", jColorUtil.ERROR);
+                continue;
+            }
+
+            String question = "Вы уверены что хотите изменить";
+            switch (parsed.get()) {
+                case "1" -> {
+                    Optional<String> nameOpt = setNameForEmployeeInteractive(
+                            inputUtil.askYesOrNo(question, "имя сотрудника", JColorUtil.COLOR.WARN),
+                            true);
+                    nameOpt.ifPresent(employeeBuilder::name);
+                }
+                case "2" -> setGmailForEmployeeInteractive(
+                        employeeBuilder, !inputUtil.askYesOrNo(question, "gmail", JColorUtil.COLOR.WARN),
+                        true);
+                case "3" -> setPhoneNumberForEmployeeInteractive(
+                        employeeBuilder, !inputUtil.askYesOrNo(question, "номер телефона", JColorUtil.COLOR.WARN),
+                        true);
+                case "4" -> setPayRateForEmployeeInteractive(
+                        employeeBuilder, !inputUtil.askYesOrNo(question, "ставку", JColorUtil.COLOR.WARN),
+                        true);
+                case "/help" -> {
+                    System.out.println("help information");
+                    continue;
+                }
+                case "0", "/back" -> {
+                    return;
+                }
+            }
+            Employee editedEmployee = employeeBuilder.build();
+            employeeService.save(editedEmployee);
+            sessionContext.setCurrentEmployee(editedEmployee);
+        }
+    }
+
+    private Optional<String> setNameForEmployeeInteractive(boolean isSkipField, boolean isEditField) {
+        if (!isSkipField) {
             boolean firstInputAttempt = true;
+            String currentName = null;
             while (true) {
                 if (firstInputAttempt) {
-                    System.out.printf("%sУкажите gmail сотрудника:\n", jColorUtil.INFO);
+                    if (isEditField) {
+                        currentName = sessionContext.getCurrentEmployee().orElseThrow().getName();
+                        System.out.printf("""
+                                        %sТекущее имя: %s
+                                        %sУкажите новое имя:
+                                        """, jColorUtil.INFO,
+                                jColorUtil.turnTextIntoColor(currentName, JColorUtil.COLOR.INFO),
+                                jColorUtil.INFO);
+                    } else {
+                        System.out.printf("%sВведите имя:\n", jColorUtil.INFO);
+                    }
+                } else {
+                    System.out.printf("%sВведите другое имя:\n", jColorUtil.INFO);
+                }
+                firstInputAttempt = false;
+
+                Optional<String> parsedName =
+                        inputUtil.parseInput("^[А-Яа-яЁё]{2,}([ .-]?[А-Яа-яЁё]+)*$", "(/help|/back)");
+                if (parsedName.isEmpty()) {
+                    System.out.printf("""
+                                    %sНекорректное имя
+                                    %sВведите '%s' для получения справки
+                                    """, jColorUtil.ERROR, jColorUtil.INFO,
+                            jColorUtil.turnTextIntoColor("/help", JColorUtil.COLOR.INFO));
+                } else {
+                    String command = parsedName.get();
+                    if (command.matches("/help")) {
+                        firstInputAttempt = true;
+//                    printer.print
+                        continue;
+                    }
+                    if (command.matches("/back")) {
+                        return Optional.empty();
+                    } else {
+                        String newName = parsedName.get();
+
+                        if (isEditField && currentName.equals(newName)) {
+                            System.out.printf("%sУказано то же самое имя\n", jColorUtil.ERROR);
+                            continue;
+                        }
+
+                        Optional<Employee> foundEmployeeByName = employeeService.findEmployeeByName(newName);
+
+                        if (foundEmployeeByName.isPresent()) {
+                            System.out.printf("""
+                                            %sСотрудник с таким именем уже существует
+                                            %sВведите '%s' для получения справки
+                                            """, jColorUtil.WARN, jColorUtil.INFO,
+                                    jColorUtil.turnTextIntoColor("/help", JColorUtil.COLOR.WARN));
+                            continue;
+                        }
+                        if (isEditField)
+                            System.out.printf("%sИмя сотрудника '%s' успешно изменено на '%s'\n", jColorUtil.SUCCESS,
+                                    jColorUtil.turnTextIntoColor(currentName, JColorUtil.COLOR.INFO),
+                                    jColorUtil.turnTextIntoColor(newName, JColorUtil.COLOR.INFO));
+                        else
+                            System.out.printf("%sИмя '%s' успешно указано\n", jColorUtil.SUCCESS,
+                                    jColorUtil.turnTextIntoColor(newName, JColorUtil.COLOR.SUCCESS));
+                        return Optional.of(newName);
+                    }
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    private void setGmailForEmployeeInteractive(Employee.EmployeeBuilder builder,
+                                                boolean isSkipField, boolean isEditField) {
+        if(!isSkipField){
+            boolean firstInputAttempt = true;
+            String currentGmail = "не указано";
+            while (true) {
+                if (firstInputAttempt) {
+                    if(isEditField) {
+                        if (sessionContext.getCurrentEmployee().orElseThrow().getGmail().isPresent()) {
+                            currentGmail = sessionContext.getCurrentEmployee().orElseThrow().getGmail().get();
+                        }
+                        System.out.printf("""
+                                %sТекущий gmail: %s
+                                %sУкажите новый gmail:
+                                """, jColorUtil.INFO,
+                                jColorUtil.turnTextIntoColor(currentGmail, JColorUtil.COLOR.INFO),
+                                jColorUtil.INFO);
+                    } else {
+                        System.out.printf("%sУкажите gmail сотрудника:\n", jColorUtil.INFO);
+                    }
                 } else {
                     System.out.printf("%sУкажите другой gmail:\n", jColorUtil.INFO);
                 }
                 firstInputAttempt = false;
-                Optional<String> parsedGmail = parseInput("^[a-zA-Z0-9._%+-]+@gmail\\.com$", "/help");
+                Optional<String> parsedGmail = inputUtil.parseInput("^[a-zA-Z0-9._%+-]+@gmail\\.com$", "/help");
                 if (parsedGmail.isEmpty()) {
                     System.out.printf("""
                                     %sНекорректный gmail
@@ -274,12 +656,18 @@ public class ConsoleService {
                             jColorUtil.turnTextIntoColor("/help", JColorUtil.COLOR.WARN));
                 } else {
                     String command = parsedGmail.get();
-                    if (command.matches(COMMANDS.get("help"))) {
+                    if (command.matches("/help")) {
                         firstInputAttempt = true;
 //                        printer.printInfo();
                     } else {
-                        String tempGmail = parsedGmail.get();
-                        Optional<Employee> foundEmployeeByGmail = employeeService.findEmployeeByGmail(tempGmail);
+                        String newGmail = parsedGmail.get();
+
+                        if (isEditField && currentGmail.equals(newGmail)) {
+                            System.out.printf("%sУказан тот же самый gmail\n", jColorUtil.ERROR);
+                            continue;
+                        }
+
+                        Optional<Employee> foundEmployeeByGmail = employeeService.findEmployeeByGmail(newGmail);
                         if (foundEmployeeByGmail.isPresent()) {
                             System.out.printf("""
                                             %sСотрудник с таким gmail уже существует
@@ -287,26 +675,51 @@ public class ConsoleService {
                                             """, jColorUtil.WARN, jColorUtil.INFO,
                                     jColorUtil.turnTextIntoColor("/help", JColorUtil.COLOR.WARN));
                         }
-                        builder.gmail(tempGmail);
-                        System.out.printf("%sGmail '%s' успешно указан\n", jColorUtil.SUCCESS, jColorUtil.turnTextIntoColor(
-                                tempGmail, JColorUtil.COLOR.SUCCESS));
+                        builder.gmail(newGmail);
+                        if (isEditField) {
+                            if (currentGmail.equals("не указано"))
+                                System.out.printf("%sGmail успешно изменен на '%s'\n", jColorUtil.SUCCESS,
+                                        jColorUtil.turnTextIntoColor(newGmail, JColorUtil.COLOR.INFO));
+                            else
+                                System.out.printf("%sGmail '%s' успешно изменен на '%s'\n", jColorUtil.SUCCESS,
+                                        jColorUtil.turnTextIntoColor(currentGmail, JColorUtil.COLOR.INFO),
+                                        jColorUtil.turnTextIntoColor(newGmail, JColorUtil.COLOR.INFO));
+                        } else {
+                            System.out.printf("%sGmail '%s' успешно указан\n", jColorUtil.SUCCESS,
+                                    jColorUtil.turnTextIntoColor(newGmail, JColorUtil.COLOR.SUCCESS));
+                        }
                         return;
                     }
                 }
             }
         }
     }
-    private void setPhoneNumberForEmployeeInteractive(Employee.EmployeeBuilder builder) {
-        if (!isSkipField("номера телефона")) {
+
+    private void setPhoneNumberForEmployeeInteractive(Employee.EmployeeBuilder builder,
+                                                      boolean isSkipField, boolean isEditField) {
+        if (!isSkipField) {
             boolean firstInputAttempt = true;
+            String currentPhoneNumber = "не указано";
             while (true) {
                 if (firstInputAttempt) {
-                    System.out.printf("%sУкажите номер телефона сотрудника:\n", jColorUtil.INFO);
+                    if(isEditField) {
+                        if (sessionContext.getCurrentEmployee().orElseThrow().getPhoneNumber().isPresent()) {
+                            currentPhoneNumber = sessionContext.getCurrentEmployee().orElseThrow().getPhoneNumber().get();
+                        }
+                        System.out.printf("""
+                                %sТекущий номер телефона: %s
+                                %sУкажите новый номер телефона:
+                                """, jColorUtil.INFO,
+                                jColorUtil.turnTextIntoColor(currentPhoneNumber, JColorUtil.COLOR.INFO),
+                                jColorUtil.INFO);
+                    } else {
+                        System.out.printf("%sУкажите номер телефона сотрудника:\n", jColorUtil.INFO);
+                    }
                 } else {
                     System.out.printf("%sУкажите другой номер телефона:\n", jColorUtil.INFO);
                 }
                 firstInputAttempt = false;
-                Optional<String> parsed = parseInput("^[87]\\d{10}$|^\\d{10}$");
+                Optional<String> parsed = inputUtil.parseInput("^[87]\\d{10}$|^\\d{10}$");
 
                 if (parsed.isEmpty()) {
                     System.out.printf("""
@@ -316,12 +729,18 @@ public class ConsoleService {
                             jColorUtil.turnTextIntoColor("/help", JColorUtil.COLOR.WARN));
                 } else {
                     String command = parsed.get();
-                    if (command.matches(COMMANDS.get("help"))) {
+                    if (command.matches("/help")) {
                         firstInputAttempt = true;
 //                                    printer.printInfo();
                     } else {
-                        String tempPhoneNumber = parsed.get();
-                        Optional<Employee> foundEmployee = employeeService.findEmployeeByPhoneNumber(tempPhoneNumber);
+                        String newPhoneNumber = parsed.get();
+
+                        if (isEditField && currentPhoneNumber.equals(newPhoneNumber)) {
+                            System.out.printf("%sУказан тот же самый номер телефона\n", jColorUtil.ERROR);
+                            continue;
+                        }
+                        Optional<Employee> foundEmployee = employeeService.findEmployeeByPhoneNumber(newPhoneNumber);
+
                         if (foundEmployee.isPresent()) {
                             System.out.printf("""
                                             %sСотрудник с таким номером телефона уже существует
@@ -330,28 +749,53 @@ public class ConsoleService {
                                     jColorUtil.turnTextIntoColor("/help", JColorUtil.COLOR.WARN));
                             continue;
                         }
-                        builder.phoneNumber(tempPhoneNumber);
-                        System.out.printf("%sНомер телефона '%s' успешно указан\n", jColorUtil.SUCCESS,
-                                jColorUtil.turnTextIntoColor(tempPhoneNumber, JColorUtil.COLOR.SUCCESS));
+                        builder.phoneNumber(newPhoneNumber);
+                        if (isEditField) {
+                            if (currentPhoneNumber.equals("не указано"))
+                                System.out.printf("%sНомер телефона успешно изменен на '%s'\n", jColorUtil.SUCCESS,
+                                        jColorUtil.turnTextIntoColor(newPhoneNumber, JColorUtil.COLOR.INFO));
+                            else
+                                System.out.printf("%sНомер телефона '%s' успешно изменен на '%s'\n", jColorUtil.SUCCESS,
+                                        jColorUtil.turnTextIntoColor(currentPhoneNumber, JColorUtil.COLOR.INFO),
+                                        jColorUtil.turnTextIntoColor(newPhoneNumber, JColorUtil.COLOR.INFO));
+                        } else {
+                            System.out.printf("%sНомер телефона '%s' успешно указан\n", jColorUtil.SUCCESS,
+                                    jColorUtil.turnTextIntoColor(newPhoneNumber, JColorUtil.COLOR.SUCCESS));
+                        }
                         return;
                     }
                 }
             }
         }
     }
-    private void setPayRateForEmployeeInteractive(Employee.EmployeeBuilder builder) {
-        if (!isSkipField("ставки")) {
+
+    private void setPayRateForEmployeeInteractive(Employee.EmployeeBuilder builder,
+                                                  boolean isSkipField, boolean isEditField) {
+        if (!isSkipField) {
             boolean firstInputAttempt = true;
+            String currentPayRate = "не указано";
             while (true) {
                 if (firstInputAttempt) {
-                    System.out.printf("%sУкажите ставку сотруднику:\n", jColorUtil.INFO);
+                    if(isEditField) {
+                        if (sessionContext.getCurrentEmployee().orElseThrow().getPayRate().isPresent()) {
+                            currentPayRate = sessionContext.getCurrentEmployee().orElseThrow().getPayRate().get().toString();
+                        }
+                        System.out.printf("""
+                                %sТекущий ставка: %s
+                                %sУкажите новую ставку:
+                                """, jColorUtil.INFO,
+                                jColorUtil.turnTextIntoColor(currentPayRate, JColorUtil.COLOR.INFO),
+                                jColorUtil.INFO);
+                    } else {
+                        System.out.printf("%sУкажите ставку сотруднику:\n", jColorUtil.INFO);
+                    }
                 } else {
-                    System.out.printf("%sУкажите другую ставку телефона:\n", jColorUtil.INFO);
+                    System.out.printf("%sУкажите другую ставку:\n", jColorUtil.INFO);
                 }
                 firstInputAttempt = false;
-                Optional<String> parsedPayRate = parseInput("\\d+", "/help");
+                Optional<String> parsed = inputUtil.parseInput("\\d+", "/help");
 
-                if (parsedPayRate.isEmpty() || Double.parseDouble(parsedPayRate.get()) <= 0) {
+                if (parsed.isEmpty() || Double.parseDouble(parsed.get()) <= 0) {
                     System.out.printf("""
                                     %sНекорректная ставка
                                     %sВведите '%s' для получения справки
@@ -359,24 +803,87 @@ public class ConsoleService {
                             jColorUtil.turnTextIntoColor("/help", JColorUtil.COLOR.WARN));
 
                 } else {
-                    String command = parsedPayRate.get();
-                    if (command.matches(COMMANDS.get("help"))) {
+                    String command = parsed.get();
+
+                    if (command.matches("/help")) {
                         firstInputAttempt = true;
 //                        printer.printInfo();
-                        continue;
+                    } else{
+                        String newPayRateStr = parsed.get();
+
+                        if (isEditField && currentPayRate.equals(newPayRateStr)) {
+                            System.out.printf("%sУказана та же самая ставка\n", jColorUtil.ERROR);
+                            continue;
+                        }
+                        double newPayRate = Double.parseDouble(newPayRateStr);
+                        builder.payRate(newPayRate);
+
+                        if (isEditField) {
+                            if (currentPayRate.equals("не указано"))
+                                System.out.printf("%sСтавка успешно изменена на '%s'\n", jColorUtil.SUCCESS,
+                                        jColorUtil.turnTextIntoColor(newPayRateStr, JColorUtil.COLOR.INFO));
+                            else
+                                System.out.printf("%sСтавка '%s' успешно изменена на '%s'\n", jColorUtil.SUCCESS,
+                                        jColorUtil.turnTextIntoColor(currentPayRate, JColorUtil.COLOR.INFO),
+                                        jColorUtil.turnTextIntoColor(newPayRateStr, JColorUtil.COLOR.INFO));
+                        } else {
+                            System.out.printf("%sСтавка '%s' успешно указана\n", jColorUtil.SUCCESS,
+                                    jColorUtil.turnTextIntoColor(newPayRateStr, JColorUtil.COLOR.SUCCESS));
+                        }
+                        return;
                     }
-                    String payRateStr = parsedPayRate.get();
-                    double payRate = Double.parseDouble(payRateStr);
-                    builder.payRate(payRate);
-                    System.out.printf("%sСтавка '%s' успешно указана\n", jColorUtil.SUCCESS,
-                            jColorUtil.turnTextIntoColor(payRateStr, JColorUtil.COLOR.SUCCESS));
-                    return;
                 }
             }
         }
     }
 //    -----------------------------------------------------------------------------
-    public void monthSheetTab(){
+    public void pwzMenu(){
+        contextManager.enterContext(ConditionContext.PWZ_MENU);
+        while(true){
+            printer.printInfo(contextManager.getCurrentContext());
+            Optional<String> parsed = inputUtil.parseInput("[0-4]", "(/help|/back)");
+            if (parsed.isEmpty()) {
+                System.out.printf("%sУказано неверное значение\n", jColorUtil.ERROR);
+                continue;
+            }
+            switch (parsed.get()){
+                case "1" -> changeCurrentPwzInteractiveMenu();
+                case "2" -> pwzService.createNewPwz();
+                case "3" -> {}
+                case "4" -> {}
+                case "0", "/back" -> {
+                    contextManager.exitContext();
+                    return;
+                }
+                case "/help" -> {}
+            }
+        }
+    }
+
+    public void changeCurrentPwzInteractiveMenu(){
+        contextManager.enterContext(ConditionContext.CHANGE_CURRENT_PWZ_INTERACTIVE_MENU);
+        while(true){
+            printer.printInfo(contextManager.getCurrentContext());
+            Optional<String> parsed = inputUtil.parseInput("[0-4]", "(/help|/back)");
+            if (parsed.isEmpty()) {
+                System.out.printf("%sУказано неверное значение\n", jColorUtil.ERROR);
+                continue;
+            }
+            switch (parsed.get()){
+                case "1" -> {}
+                case "2" -> {}
+                case "3" -> {}
+                case "4" -> {}
+                case "0", "/back" -> {
+                    contextManager.exitContext();
+                    return;
+                }
+                case "/help" -> {}
+            }
+        }
+    }
+//    -----------------------------------------------------------------------------
+    public void monthSheetMenu(){
         while(true){
             System.out.printf("""
                     =======================ЛИСТ ГРАФИКА=======================
@@ -389,242 +896,134 @@ public class ConsoleService {
                     6. Получить информацию о листе []
                     0. Вернуться назад <-
                     """);
-            Optional<String> parsed = parseInput("\\d");
-        }
-    }
-
-//    -----------------------------------------------------------------------------
-    public void pwzTab(){
-        while(true){
-            System.out.printf("""
-                    ===========================ПВЗ===========================
-                    Текущий ПВЗ: %s
-                    1. Сменить текущий ПВЗ
-                    2. Создать новый лист графика
-                    3. Удалить лист графика
-                    4. Посчитать зарплату
-                    5. Изменить ставку на ПВЗ
-                    6. Получить информацию о ПВЗ
-                    0. Вернуться назад
-                    """);
-            Optional<String> parsed = parseInput("\\d");
+            Optional<String> parsed = inputUtil.parseInput("\\d");
         }
     }
 //    -----------------------------------------------------------------------------
-    public void rootFolderTab(){
-        while(true){
-            System.out.printf("""
-                    =====================КОРНЕВАЯ ПАПКА======================
-                    Текущая корневая папка: %s
-                    1. Сменить текущую корневую папку
-                    2. Создать новый ПВЗ
-                    3. Удалить ПВЗ
-                    4. Посчитать зарплату
-                    5. Изменить ставку на корневой папке
-                    6. Получить информацию о корневой папке
-                    0. Вернуться назад
-                    """);
-            Optional<String> parsed = parseInput("\\d");
-        }
-    }
 
 //    =============================================================================
-    public void ownerAuthenticationStage(List<Owner> owners){
-        if(owners.isEmpty()){
-            System.out.printf("%sНе удалось обнаружить владельцев, создайте нового, чтобы продолжить работу\n",
+    public void userAuthenticationStage(List<User> users){
+        if(users.isEmpty()) {
+            System.out.printf("%sНе удалось обнаружить пользователей, создайте нового, чтобы продолжить работу\n",
                     jColorUtil.INFO);
-            createOwnerInteractive(new OwnerDTO());
-        } else if(owners.size() == 1){
-            authenticateOwnerInteractive(owners.getFirst());
+            createUserInteractive(new RegisterUserDTO(), true);
+        } else if(users.size() == 1) {
+            AuthUserDTO authUserDTO = AuthUserDTO.builder().username(users.getFirst().getUsername()).build();
+            consoleController.authenticate(authUserDTO);
         } else {
-            System.out.printf("%sВыберите владельца для входа:\n", jColorUtil.INFO);
-            Owner owner = selectOwnerInteractive(owners);
-            authenticateOwnerInteractive(owner);
+            System.out.printf("%sВыберите пользователя для входа:\n", jColorUtil.INFO);
+            AuthUserDTO authUserDTO = selectUserInteractive(users);
+            consoleController.authenticate(authUserDTO);
         }
     }
 
-    public void createOwnerInteractive(OwnerDTO ownerDTO) {
-        boolean nameAlreadyExists = true;
-        boolean firstNameAttempt = true;
+    public void createUserInteractive(RegisterUserDTO registerUserDTO, boolean firstUser) {
+        boolean usernameAlreadyExists = true;
+        boolean firstUsernameAttempt = true;
 
         do {
-            if (firstNameAttempt)
-                System.out.printf("%sВведите имя нового владельца:\n", jColorUtil.INFO);
+            if (firstUsernameAttempt)
+                System.out.printf("%sВведите имя нового пользователя:\n", jColorUtil.INFO);
             else
                 System.out.printf("%sВведите другое имя:\n", jColorUtil.INFO);
-            String name = parseInput().orElseThrow();
-            Optional<Owner> foundOwner = ownerService.findByName(name);
-            if (foundOwner.isPresent()) {
-                System.out.printf("%sВладелец с таким именем уже существует\n", jColorUtil.WARN);
-                firstNameAttempt = false;
-            } else {
-                nameAlreadyExists = false;
-                ownerDTO.setName(name);
+            Optional<String> parsed = inputUtil.parseInput();
+            if (parsed.isPresent()) {
+                String username = parsed.get();
+                Optional<User> foundUser = userService.findByUsername(username);
+                if (foundUser.isPresent()) {
+                    System.out.printf("%sПользователь с таким именем уже существует\n", jColorUtil.WARN);
+                    firstUsernameAttempt = false;
+                } else {
+                    usernameAlreadyExists = false;
+                    registerUserDTO.setUsername(username);
+                }
+            } else{
+                return;
             }
-        } while (nameAlreadyExists);
+        } while (usernameAlreadyExists);
 
         boolean passwordsDoNotMatch = true;
 
         do{
             System.out.printf("%sВведите новый пароль для входа:\n", jColorUtil.INFO);
-            ownerDTO.setPassword(parseInput().orElseThrow());
+            registerUserDTO.setPassword(inputUtil.parseInput().orElseThrow());
 
             System.out.printf("%sПодтвердите пароль:\n", jColorUtil.INFO);
-            ownerDTO.setConfirmPassword(parseInput().orElseThrow());
+            registerUserDTO.setConfirmPassword(inputUtil.parseInput().orElseThrow());
 
-            if (!ownerDTO.getPassword().equals(ownerDTO.getConfirmPassword())) {
+            if (!registerUserDTO.getPassword().equals(registerUserDTO.getConfirmPassword())) {
                 System.out.printf("%sВведенные пароли не совпадают\n", jColorUtil.ERROR);
             } else {
                 passwordsDoNotMatch = false;
-                Owner owner = ownerService.ownerDtoToOwner(ownerDTO);
-                ownerService.save(owner);
-                System.out.printf("%sПользователь '%s' успешно добавлен\n", jColorUtil.INFO,
-                        jColorUtil.turnTextIntoColor(ownerDTO.getName(), JColorUtil.COLOR.INFO));
+                User user = userService.registerUserDtoToUser(registerUserDTO);
+                if(firstUser){
+                    user.setRoles(Set.of(
+                            roleService.findByName("ROLE_USER").orElseThrow(),
+                            roleService.findByName("ROLE_ADMIN").orElseThrow()));
+                } else {
+                    user.setRoles(Set.of(roleService.findByName("ROLE_USER").orElseThrow()));
+                }
+                userService.saveWithPasswordEncoding(user);
+
+                if (firstUser){
+                    consoleController.setAuthentication(userService.registerUserDtoToAuthUserDto(registerUserDTO));
+                    System.out.printf("%sПользователь '%s' успешно создан и аутентифицирован\n", jColorUtil.SUCCESS,
+                            jColorUtil.turnTextIntoColor(registerUserDTO.getUsername(), JColorUtil.COLOR.SUCCESS));
+                } else {
+                    System.out.printf("%sПользователь '%s' успешно создан\n", jColorUtil.SUCCESS,
+                            jColorUtil.turnTextIntoColor(registerUserDTO.getUsername(), JColorUtil.COLOR.SUCCESS));
+                }
+
             }
         } while (passwordsDoNotMatch);
     }
 
-    public void authenticateOwnerInteractive(Owner owner){
-        boolean incorrectPassword = true;
-        do {
-            System.out.printf("%sВведите пароль для входа:\n", jColorUtil.INFO);
-            String password = parseInput().orElseThrow();
-            if(passwordEncoder.matches(password, owner.getPassword())){
-                System.out.printf("Привет, %s!\n",
-                        jColorUtil.turnTextIntoColor(owner.getName(), JColorUtil.COLOR.INFO));
-                sessionContext.setCurrentOwner(owner);
-                incorrectPassword = false;
-            } else{
-                System.out.printf("%sНеправильный пароль\n", jColorUtil.ERROR);
-            }
-        } while (incorrectPassword);
-    }
-
-    public Owner selectOwnerInteractive(List<Owner> owners){
-        int ownerNumber = 1;
-        for(Owner owner : owners) {
-            System.out.printf("%d. %s\n", ownerNumber++, owner.getName());
+    public AuthUserDTO selectUserInteractive(List<User> users){
+        int userNumber = 1;
+        for(User user : users) {
+            System.out.printf("%d. %s\n", userNumber++, user.getUsername());
         }
         while (true) {
-            Optional<String> parsed = parseInput("\\d");
+            Optional<String> parsed = inputUtil.parseInput("\\d");
             if (parsed.isEmpty()) {
                 System.out.printf("%sУказано неверное значение", jColorUtil.ERROR);
                 continue;
             }
             int choiceNum = Integer.parseInt(parsed.get());
 
-            if (choiceNum <= 0 || choiceNum > owners.size()){
-                System.out.println("Владельца под таким номером нет");
+            if (choiceNum <= 0 || choiceNum > users.size()){
+                System.out.println("Пользователя под таким номером нет");
             } else {
-                System.out.printf("Владелец '%s' успешно выбран.\n", owners.get(choiceNum - 1).getName());
-                return owners.get(choiceNum - 1);
+                System.out.printf("Пользователь '%s' успешно выбран.\n", users.get(choiceNum - 1).getUsername());
+                return AuthUserDTO.builder().username(users.get(choiceNum - 1).getUsername()).build();
             }
         }
     }
 //    =============================================================================
     public void rootIdentityStage(AppSettings appSettings) {
-        if (appSettings.getLastRootFolder() != null) {
+        contextManager.enterContext(ConditionContext.ROOT_IDENTITY);
+        if (appSettings.getLastRootFolder().isPresent()) {
             System.out.printf("%sРабочая папка '%s' была автоматически выбрана с прошлой сессии\n",
                     jColorUtil.INFO,
-                    jColorUtil.turnTextIntoColor(appSettings.getLastRootFolder().getTitle(), JColorUtil.COLOR.INFO));
-            sessionContext.setCurrentRootFolder(appSettings.getLastRootFolder());
+                    jColorUtil.turnTextIntoColor(appSettings.getLastRootFolder().get().getTitle(), JColorUtil.COLOR.INFO));
+            sessionContext.setCurrentRootFolder(appSettings.getLastRootFolder().get());
         } else {
-            List<RootFolder> rootFolders = appSettings.getRootFolders();
-            if (rootFolders.isEmpty()) {
-                createNewRootFolderInteractive();
-            } else if (rootFolders.size() == 1) {
-                RootFolder rootFolder = rootFolders.getFirst();
-                System.out.printf("%sРабочая папка '%s' была выбрана автоматически\n",
-                        jColorUtil.INFO,
-                        jColorUtil.turnTextIntoColor(rootFolder.getTitle(), JColorUtil.COLOR.INFO));
-                sessionContext.setCurrentRootFolder(rootFolder);
-                appSettingsService.updateSettings(settings -> settings.setLastRootFolder(rootFolder));
-            } else {
-                selectRootFolderInteractive(rootFolders);
-            }
-        }
-    }
-
-    public void createNewRootFolderInteractive() {
-        System.out.printf("""
-        %sНе указано рабочее пространство на вашем Google Disk'е
-        %sДайте название для рабочей папки:
-        """, jColorUtil.INFO, jColorUtil.INFO);
-        String rootFolderTitle = parseInput().orElseThrow();
-        String rootId = rootFolderService.createRootFolder(rootFolderTitle);
-
-        setPayRateForAppSettingsInteractive();
-
-        if (rootId != null) {
-            AppSettings appSettings = sessionContext.getCurrentAppSettings().get();
-
-            RootFolder rootFolder = new RootFolder(rootId, rootFolderTitle,
-                    appSettings.getPayRate(), appSettings);
-
-            rootFolderService.save(rootFolder);
-
-            appSettingsService.updateSettings(settings -> {
-                settings.setRootFolders(Collections.singletonList(rootFolder));
-            });
-            sessionContext.setCurrentRootFolder(rootFolder);
-        }
-    }
-
-    public void selectRootFolderInteractive(List<RootFolder> rootFolders) {
-        boolean rootFolderSelected = false;
-        boolean firstAttempt = true;
-        do {
-            if (firstAttempt) {
-                System.out.println("Выберите рабочую папку для продолжения работы: ");
-                int rootFolderNumber = 1;
-                for (RootFolder rootFolder : rootFolders) {
-                    System.out.println(rootFolderNumber + ". " + rootFolder.getTitle());
-                    rootFolderNumber++;
+            if(sessionContext.getAppSettings().getRootFolders().isEmpty()){
+                String question = "Не удалось найти рабочих папок, хотите указать рабочую папку";
+                if (inputUtil.askYesOrNo(question, "", JColorUtil.COLOR.INFO)){
+                    changeCurrentRootFolderInteractive(contextManager.getCurrentContext());
                 }
             }
-            firstAttempt = false;
-
-            Optional<String> parsed = parseInput("\\d");
-            if (parsed.isEmpty()) {
-                System.out.printf("%sУказано неверное значение", jColorUtil.ERROR);
-                continue;
-            }
-
-            int choiceNum = Integer.parseInt(parsed.get());
-
-            if (choiceNum > rootFolders.size() || choiceNum < 1) {
-                System.out.printf("Выберите цифрой от 1 до %d\n", rootFolders.size());
-            } else {
-                RootFolder rootFolder = rootFolders.get(choiceNum - 1);
-                System.out.printf("Рабочая папка '%s' выбрана успешно\n",
-                        rootFolder.getTitle());
-                appSettingsService.updateSettings(settings -> settings.setLastRootFolder(rootFolder));
-                sessionContext.setCurrentRootFolder(rootFolder);
-                rootFolderSelected = true;
-            }
-        } while (!rootFolderSelected);
+        }
+        contextManager.exitContext();
     }
 //    =============================================================================
     public void pwzIdentityStage(AppSettings appSettings){
-        if(appSettings.getLastPwz() != null) {
-            Pwz lastPwz = appSettings.getLastPwz();
-            sessionContext.setCurrentPwz(appSettings.getLastPwz());
+        if(appSettings.getLastPwz().isPresent()) {
+            Pwz lastPwz = appSettings.getLastPwz().get();
+            sessionContext.setCurrentPwz(lastPwz);
             System.out.printf("%sПвз '%s' был автоматически выбран с прошлой сессии\n", jColorUtil.INFO,
                     jColorUtil.turnTextIntoColor(lastPwz.getAddress(), JColorUtil.COLOR.INFO));
-        } else {
-            List<Pwz> pwzs = pwzService.findAll();
-            //todo
-            if(pwzs.isEmpty()){
-                createNewPwzInteractive();
-            } else if (pwzs.size() == 1) {
-                Pwz pwz = pwzs.getFirst();
-                System.out.printf("%sПвз '%s' был выбран автоматически\n", jColorUtil.INFO,
-                        jColorUtil.turnTextIntoColor(pwz.getAddress(), JColorUtil.COLOR.INFO));
-                sessionContext.setCurrentPwz(pwz);
-                appSettingsService.updateSettings(settings -> settings.setLastPwz(pwz));
-            } else {
-                selectPwzInteractive(pwzs);
-            }
         }
     }
 
@@ -632,7 +1031,8 @@ public class ConsoleService {
         boolean pwzAddressIsValid = false;
         System.out.printf("%sУкажите адрес вашего пвз:\n", jColorUtil.INFO);
         do{
-            Optional<String> parsed = parseInput("^[А-ЯЁа-яё\\s]+\\s\\d+[а-яА-Я]?(([к/])?\\d+)?$", "(help|/help)");
+            Optional<String> parsed = inputUtil.parseInput(
+                    "^[А-ЯЁа-яё\\s]+\\s\\d+[а-яА-Я]?(([к/])?\\d+)?$", "(help|/help)");
             if (parsed.isEmpty()) {
                 System.out.printf("""
                         %sУказанный адрес имеет неверный формат
@@ -664,7 +1064,7 @@ public class ConsoleService {
             }
             firstAttempt = false;
 
-            Optional<String> parsed = parseInput("\\d");
+            Optional<String> parsed = inputUtil.parseInput("\\d");
             if (parsed.isEmpty()) {
                 System.out.printf("%sУказано неверное значение", jColorUtil.ERROR);
                 continue;
@@ -686,10 +1086,8 @@ public class ConsoleService {
     }
 //    =============================================================================
     public void monthSheetIdentityStage(AppSettings appSettings) {
-
-        if(appSettings.getLastMonthSheet() != null){
-
-            MonthSheet lastMonthSheet = appSettings.getLastMonthSheet();
+        if(appSettings.getLastMonthSheet().isPresent()){
+            MonthSheet lastMonthSheet = appSettings.getLastMonthSheet().get();
             sessionContext.setCurrentMonthSheet(lastMonthSheet);
 
             System.out.printf("%sЛист '%s' был автоматически выбран с прошлой сессии", jColorUtil.INFO,
@@ -746,7 +1144,7 @@ public class ConsoleService {
             }
             firstAttempt = false;
 
-            Optional<String> parsed = parseInput("\\d");
+            Optional<String> parsed = inputUtil.parseInput("\\d");
             if (parsed.isEmpty()) {
                 System.out.printf("%sУказано неверное значение", jColorUtil.ERROR);
                 continue;
@@ -768,57 +1166,37 @@ public class ConsoleService {
     }
 //    =============================================================================
     public void setPayRateForAppSettingsInteractive() {
-        System.out.printf("""
+        if (sessionContext.getAppSettings().getPayRate() == null) {
+            System.out.printf("""
                 %sУкажите ставку по которой будет производиться подсчет зарплаты
                 %sЭто значение можно будет изменить позже
                 """, jColorUtil.INFO, jColorUtil.INFO);
-        boolean payRateIsValid = false;
-        double payRate;
-        do {
-            Optional<String> parsed = parseInput("\\d+");
-            if (parsed.isPresent()) {
-                payRate = Double.parseDouble(parsed.get());
-                if (payRate <= 0) {
-                    System.out.printf("%sСтавка не может быть нулевой или отрицательной\n", jColorUtil.ERROR);
-                } else {
-                    payRateIsValid = true;
+            while (true) {
+                Optional<String> parsed = inputUtil.parseInput("\\d+");
+                if (parsed.isPresent()) {
+                    double payRate = Double.parseDouble(parsed.get());
+                    if (payRate <= 0) {
+                        System.out.printf("%sСтавка не может быть нулевой или отрицательной\n", jColorUtil.ERROR);
+                        continue;
+                    }
                     final double payRateConst = payRate;
-                     AppSettings appSettings = appSettingsService.updateSettings(settings ->
+                    AppSettings appSettings = appSettingsService.updateSettings(settings ->
                             settings.setPayRate(payRateConst));
-                     sessionContext.setAppSettings(appSettings);
+                    sessionContext.setAppSettings(appSettings);
                     System.out.printf("%sСтавка успешно указана\n", jColorUtil.SUCCESS);
+                    return;
+                } else {
+                    System.out.printf("%sУказано неверное значение для ставки\n", jColorUtil.ERROR);
                 }
-            } else {
-                System.out.printf("%sУказано неверное значение для ставки\n", jColorUtil.ERROR);
             }
-        } while (!payRateIsValid);
-    }
-//    =============================================================================
-    public Optional<String> parseInput(@Language("RegExp") String... regexps) {
-        System.out.print(jColorUtil.turnTextIntoColor(">", JColorUtil.COLOR.INFO));
-        long regexpsCount = Arrays.stream(regexps).count();
-        if(regexpsCount == 0)
-            return Optional.of(inputOutputUtil.parseInput(scanner, regexps));
-        else
-            return Optional.ofNullable(inputOutputUtil.parseInput(scanner, regexps));
-    }
-
-    public boolean isSkipField(String fieldInGenitiveCase){
-        boolean firstInputAttempt = true;
-        while (true){
-            if(firstInputAttempt) {
-                System.out.printf("%sПропустить ввод поля %s? (y/n)\n", jColorUtil.INFO,
-                        jColorUtil.turnTextIntoColor(fieldInGenitiveCase, JColorUtil.COLOR.INFO));
-            }
-            firstInputAttempt = false;
-
-            Optional<String> parsed = parseInput("[yYnN]");
-            if (parsed.isEmpty()) {
-                System.out.printf("%sНедопустимое значение\n", jColorUtil.ERROR);
-                continue;
-            }
-            String answer = parsed.get();
-            return answer.equalsIgnoreCase("y");
         }
     }
+//    =============================================================================
+
+    public void initializeSettings(){
+        System.out.printf("%sНастройки инициализированы\n", jColorUtil.INFO);
+        sessionContext.setCurrentPwzsFolderId(appSettingsService.getSettings().getPwzsFolderId());
+        sessionContext.setAppSettings(appSettingsService.getSettings());
+    }
+
 }
