@@ -231,7 +231,7 @@ public class PrinterUtil {
                 jColorUtil.turnTextIntoColor("<>", JColorUtil.COLOR.IN_PROCESS),
                 jColorUtil.turnTextIntoColor("2", JColorUtil.COLOR.IN_PROCESS),
                 jColorUtil.turnTextIntoColor("<>", JColorUtil.COLOR.IN_PROCESS),
-                jColorUtil.turnTextIntoColor("3", JColorUtil.COLOR.WARN),
+                jColorUtil.turnTextIntoColor("0", JColorUtil.COLOR.WARN),
                 jColorUtil.turnTextIntoColor("<-", JColorUtil.COLOR.WARN)
         );
     }

@@ -47,12 +47,13 @@ public class User {
     private Set<RootFolder> rootFolders;
 
     @Builder
-    public User(String username, String password) {
+    public User(String username, String password, Set<Role> roles) {
         this.username = username;
         this.password = password;
-        this.roles = new HashSet<>();
+        this.roles = roles;
         this.rootFolders = new HashSet<>();
     }
+
 
     public void addRootFolder(RootFolder rootFolder) {
         if (!this.rootFolders.contains(rootFolder)) {

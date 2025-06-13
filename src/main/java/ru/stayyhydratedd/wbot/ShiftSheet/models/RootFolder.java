@@ -36,6 +36,11 @@ public class RootFolder {
     @ToString.Exclude
     private List<Pwz> pwzs;
 
+    @Column(name = "pwsz_folder_id")
+    @Getter
+    @Setter
+    private String pwzsFolderId;
+
     @ManyToOne
     @JoinColumn(name = "app_settings", referencedColumnName = "id")
     @ToString.Exclude
@@ -46,13 +51,15 @@ public class RootFolder {
     private Set<User> users;
 
     @Builder
-    public RootFolder(int id, String googleId, String title, Double payRate, DateTime createdTime, AppSettings appSettings) {
+    public RootFolder(int id, String googleId, String title, Double payRate,
+                      DateTime createdTime, AppSettings appSettings, String pwzsFolderId) {
         this.id = id;
         this.googleId = googleId;
         this.title = title;
         this.payRate = payRate;
         this.createdTime = createdTime;
         this.appSettings = appSettings;
+        this.pwzsFolderId = pwzsFolderId;
         this.pwzs = new ArrayList<>();
         this.users = new HashSet<>();
     }

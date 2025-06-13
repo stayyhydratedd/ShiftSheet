@@ -20,10 +20,10 @@ public class AppSettings {
     @Setter
     private Double payRate;
 
-    @Column(name = "pwsz_folder_id")
-    @Getter
+    @OneToOne
+    @JoinColumn(name = "app_folder", referencedColumnName = "id")
     @Setter
-    private String pwzsFolderId;
+    private AppFolder appFolder;
 
     @OneToOne
     @JoinColumn(name = "last_root_folder", referencedColumnName = "id")
@@ -40,10 +40,15 @@ public class AppSettings {
     @Setter
     private MonthSheet lastMonthSheet;
 
+
     @OneToMany(mappedBy = "appSettings", cascade = CascadeType.REMOVE, orphanRemoval = true, fetch = FetchType.EAGER)
     @Getter
     @Setter
     private List<RootFolder> rootFolders;
+
+    public Optional<AppFolder> getAppFolder() {
+        return Optional.ofNullable(appFolder);
+    }
 
     public Optional<RootFolder> getLastRootFolder() {
         return Optional.ofNullable(lastRootFolder);

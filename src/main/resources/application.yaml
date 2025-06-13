@@ -27,5 +27,9 @@ logging:
   level:
     root: off
 
+jwt:
+  secret:
+  issuer:
+  duration: 60m
 
 

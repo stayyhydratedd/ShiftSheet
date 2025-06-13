@@ -41,14 +41,16 @@ public class MonthSheetService {
             return;
         }
         Optional<Pwz> foundPwz = pwzService.findById(sessionContext.getCurrentPwz().get().getId());
-        int year = LocalDate.now().getYear();
-        int month = LocalDate.now().getMonthValue();
         if(foundPwz.isEmpty()){
             System.out.printf("%sВозникла непредвиденная ошибка", jColorUtil.ERROR);
             return;
         }
         Pwz pwz = foundPwz.get();
+
+        int year = LocalDate.now().getYear();
+        int month = LocalDate.now().getMonthValue();
         double payRate = pwz.getPayRate();
+
         MonthSheet monthSheet = MonthSheet.builder()
                 .googleId(pwz.getGoogleId())
                 .year(year)
@@ -58,13 +60,16 @@ public class MonthSheetService {
                 .build();
 
         save(monthSheet);
-
-//        return monthSheet; todo доделать
+        executeCreateMonthSheetInPwzSpreadsheet(monthSheet);
+        executeFormatMonthSheetInPwzSpreadsheet(monthSheet);
+        executeDeleteZeroIdSheet(monthSheet);
     }
+
     public void executeCreateMonthSheetInPwzSpreadsheet(MonthSheet monthSheet) {
 
         String year = monthSheet.getYear().toString();
         String month = monthSheet.getMonth().toString();
+
         if(month.length() == 1)
             month = "0" + month;
 
@@ -81,7 +86,8 @@ public class MonthSheetService {
                                                         .setRowCount(15)
                                                         .setFrozenColumnCount(1)    //заморозка одной колонны слева
                                                         .setFrozenRowCount(3)   //заморозка трех строк сверху
-                                        ).setSheetId(sheetId)
+                                        )
+                                        .setSheetId(sheetId)
                                         .setTitle(dateUtil.getFullMonthSheetDate(monthSheet))
                         )
                 ),
@@ -244,24 +250,29 @@ public class MonthSheetService {
         );
         try{
             googleFileWorkerUtil.executeRequestsBody(requests, monthSheet.getGoogleId());
-            System.out.printf("Лист в таблице успешно создан"); //todo
+            System.out.printf("Лист в таблице успешно создан\n"); //todo
         } catch (Exception e){
-            System.out.printf("Не удалось создать лист в таблице"); //todo
+            System.out.printf("Не удалось создать лист в таблице\n"); //todo
 
         }
     }
 
-    public void executeDeleteZeroIdSheet(String pwzGoogleId) {
+    public void executeDeleteZeroIdSheet(MonthSheet monthSheet) {
 
-        List<Request> requests = List.of(
-                new Request().setDeleteSheet(
-                        new DeleteSheetRequest().setSheetId(0)
-                )
-        );
-        try {
-            googleFileWorkerUtil.executeRequestsBody(requests, pwzGoogleId);
-        } catch (IOException e) {
-            System.out.printf("%sНе удалось удалить нулевой лист\n", jColorUtil.WARN);
+        List<Sheet> sheets = pwzService.getMonthSheets(monthSheet.getGoogleId());
+        for(Sheet sheet : sheets){
+            if(sheet.getProperties().getSheetId() == 0){
+                List<Request> requests = List.of(
+                        new Request().setDeleteSheet(
+                                new DeleteSheetRequest().setSheetId(0)
+                        )
+                );
+                try {
+                    googleFileWorkerUtil.executeRequestsBody(requests, monthSheet.getGoogleId());
+                } catch (IOException e) {
+                    System.out.printf("%sНе удалось удалить нулевой лист\n", jColorUtil.WARN);
+                }
+            }
         }
     }
 
@@ -307,4 +318,5 @@ public class MonthSheetService {
     private ValueRange createValueRange(String range, List<List<Object>> values) {
         return new ValueRange().setRange(range).setValues(values);
     }
+
 }

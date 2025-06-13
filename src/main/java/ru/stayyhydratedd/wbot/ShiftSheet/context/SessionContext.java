@@ -12,6 +12,9 @@ import java.util.Optional;
 public class SessionContext {
 
     @Getter
+    private AppFolder appFolder;
+
+    @Getter
     private AppSettings appSettings;
 
     private User currentUser;
@@ -29,18 +32,23 @@ public class SessionContext {
     public Optional<User> getCurrentUser() {
         return Optional.ofNullable(currentUser);
     }
+
     public Optional<RootFolder> getCurrentRootFolder() {
         return Optional.ofNullable(currentRootFolder);
     }
+
     public Optional<Pwz> getCurrentPwz() {
         return Optional.ofNullable(currentPwz);
     }
+
     public Optional<MonthSheet> getCurrentMonthSheet() {
         return Optional.ofNullable(currentMonthSheet);
     }
+
     public Optional<Employee> getCurrentEmployee() {
         return Optional.ofNullable(currentEmployee);
     }
+
     public Optional<String> getCurrentPwzsFolderId() {
         return Optional.ofNullable(currentPwzsFolderId);
     }

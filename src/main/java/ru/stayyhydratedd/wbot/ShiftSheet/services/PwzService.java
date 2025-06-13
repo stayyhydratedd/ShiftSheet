@@ -78,7 +78,9 @@ public class PwzService {
 
 //    todo @PreAuthorize
     public void createNewPwz(){
+
         AppSettings appSettings = sessionContext.getAppSettings();
+
         if(appSettings.getLastRootFolder().isEmpty()) {
             System.out.printf("%sНеобходимо указать корневую папку, прежде чем создавать ПВЗ\n",
                     jColorUtil.WARN);

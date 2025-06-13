@@ -36,7 +36,7 @@ public class Pwz {
     private List<MonthSheet> monthSheets;
 
     @ManyToOne
-    @JoinColumn(name = "root_folder_id", referencedColumnName = "id")
+    @JoinColumn(name = "root_folder_id", referencedColumnName = "id", nullable = false)
     private RootFolder rootFolder;
 
     @Builder

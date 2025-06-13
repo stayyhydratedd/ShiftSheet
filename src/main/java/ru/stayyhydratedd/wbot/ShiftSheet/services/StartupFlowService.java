@@ -14,6 +14,8 @@ public class StartupFlowService {
     private final SessionContext sessionContext;
 
     public void runFlow(){
+
+        //todo appFolderStage
         consoleService.userAuthenticationStage(userService.findAll());
         consoleService.initializeSettings();
         consoleService.setPayRateForAppSettingsInteractive();

@@ -1,6 +1,5 @@
 package ru.stayyhydratedd.wbot.ShiftSheet.services;
 
-import com.google.api.services.sheets.v4.model.Sheet;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.stereotype.Service;
@@ -850,9 +849,11 @@ public class ConsoleService {
                 case "1" -> changeCurrentPwzInteractiveMenu();
                 case "2" -> {
                     pwzService.createNewPwz();
-                    if (inputUtil.askYesOrNo("Хотите создать новый",
-                            "месячный лист", JColorUtil.COLOR.INFO)) {
-                        monthSheetService.createMonthSheet();
+                    if(sessionContext.getCurrentPwz().isPresent()){
+                        if (inputUtil.askYesOrNo("Хотите создать новый",
+                                "месячный лист", JColorUtil.COLOR.INFO)) {
+                            monthSheetService.createMonthSheet();
+                        }
                     }
                 }
                 case "3" -> {}
@@ -878,8 +879,6 @@ public class ConsoleService {
             switch (parsed.get()){
                 case "1" -> {}
                 case "2" -> {}
-                case "3" -> {}
-                case "4" -> {}
                 case "0", "/back" -> {
                     contextManager.exitContext();
                     return;
@@ -969,7 +968,9 @@ public class ConsoleService {
                 } else {
                     user.setRoles(Set.of(roleService.findByName("ROLE_USER").orElseThrow()));
                 }
-                userService.saveWithPasswordEncoding(user);
+
+                user = userService.saveWithPasswordEncoding(user);
+                userService.appendUserTokenToSheet(user);
 
                 if (firstUser){
                     consoleController.setAuthentication(userService.registerUserDtoToAuthUserDto(registerUserDTO));
@@ -979,7 +980,6 @@ public class ConsoleService {
                     System.out.printf("%sПользователь '%s' успешно создан\n", jColorUtil.SUCCESS,
                             jColorUtil.turnTextIntoColor(registerUserDTO.getUsername(), JColorUtil.COLOR.SUCCESS));
                 }
-
             }
         } while (passwordsDoNotMatch);
     }
@@ -1008,11 +1008,14 @@ public class ConsoleService {
 //    =============================================================================
     public void rootIdentityStage(AppSettings appSettings) {
         contextManager.enterContext(ConditionContext.ROOT_IDENTITY);
-        if (appSettings.getLastRootFolder().isPresent()) {
+        Optional<RootFolder> lastRootFolder = appSettings.getLastRootFolder();
+        if (lastRootFolder.isPresent()) {
             System.out.printf("%sРабочая папка '%s' была автоматически выбрана с прошлой сессии\n",
                     jColorUtil.INFO,
-                    jColorUtil.turnTextIntoColor(appSettings.getLastRootFolder().get().getTitle(), JColorUtil.COLOR.INFO));
-            sessionContext.setCurrentRootFolder(appSettings.getLastRootFolder().get());
+                    jColorUtil.turnTextIntoColor(lastRootFolder.get().getTitle(), JColorUtil.COLOR.INFO));
+
+            sessionContext.setCurrentRootFolder(lastRootFolder.get());
+            sessionContext.setCurrentPwzsFolderId(lastRootFolder.get().getPwzsFolderId());
         } else {
             if(sessionContext.getAppSettings().getRootFolders().isEmpty()){
                 String question = "Не удалось найти рабочих папок, хотите указать рабочую папку";
@@ -1102,7 +1105,7 @@ public class ConsoleService {
         } else{
             List<MonthSheet> monthSheets = monthSheetService.findAll();
             if(monthSheets.isEmpty()){
-                createNewMonthSheetInteractive(sessionContext.getCurrentPwz().get().getGoogleId());
+//                createNewMonthSheetInteractive(sessionContext.getCurrentPwz().get().getGoogleId());
             } else if(monthSheets.size() == 1){
                 MonthSheet monthSheet = monthSheets.getFirst();
                 System.out.printf("%sЛист '%s' был выбран автоматически", jColorUtil.INFO,
@@ -1118,23 +1121,23 @@ public class ConsoleService {
         }
     }
 
-    public void createNewMonthSheetInteractive(String pwzGoogleId) {
-
-        MonthSheet monthSheet = monthSheetService.createMonthSheet(pwzGoogleId);
-
-        sessionContext.setCurrentMonthSheet(monthSheet);
-
-        monthSheetService.executeCreateMonthSheetInPwzSpreadsheet(monthSheet);
-
-        monthSheetService.executeFormatMonthSheetInPwzSpreadsheet(monthSheet);
-
-        List<Sheet> sheets = pwzService.getMonthSheets(pwzGoogleId);
-        for(Sheet sheet : sheets){
-            if(sheet.getProperties().getSheetId() == 0){
-                monthSheetService.executeDeleteZeroIdSheet(pwzGoogleId);
-            }
-        }
-    }
+//    public void createNewMonthSheetInteractive(String pwzGoogleId) {
+//
+//        MonthSheet monthSheet = monthSheetService.createMonthSheet(pwzGoogleId);
+//
+//        sessionContext.setCurrentMonthSheet(monthSheet);
+//
+//        monthSheetService.executeCreateMonthSheetInPwzSpreadsheet(monthSheet);
+//
+//        monthSheetService.executeFormatMonthSheetInPwzSpreadsheet(monthSheet);
+//
+//        List<Sheet> sheets = pwzService.getMonthSheets(pwzGoogleId);
+//        for(Sheet sheet : sheets){
+//            if(sheet.getProperties().getSheetId() == 0){
+//                monthSheetService.executeDeleteZeroIdSheet(pwzGoogleId);
+//            }
+//        }
+//    }
 
     public void selectMonthSheetInteractive(List<MonthSheet> monthSheets) {
         boolean monthSheetSelected = false;
@@ -1201,7 +1204,6 @@ public class ConsoleService {
 
     public void initializeSettings(){
         System.out.printf("%sНастройки инициализированы\n", jColorUtil.INFO);
-        sessionContext.setCurrentPwzsFolderId(appSettingsService.getSettings().getPwzsFolderId());
         sessionContext.setAppSettings(appSettingsService.getSettings());
     }
 

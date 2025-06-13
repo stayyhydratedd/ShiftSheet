@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import ru.stayyhydratedd.wbot.ShiftSheet.context.SessionContext;
 import ru.stayyhydratedd.wbot.ShiftSheet.enums.ChangeRootMethod;
 import ru.stayyhydratedd.wbot.ShiftSheet.enums.MimeType;
+import ru.stayyhydratedd.wbot.ShiftSheet.models.AppFolder;
 import ru.stayyhydratedd.wbot.ShiftSheet.models.AppSettings;
 import ru.stayyhydratedd.wbot.ShiftSheet.models.RootFolder;
 import ru.stayyhydratedd.wbot.ShiftSheet.models.User;
@@ -32,6 +33,10 @@ public class RootFolderService {
     private final JColorUtil jColorUtil;
     private final InputOutputUtil inputUtil;
 
+    public List<RootFolder> findAll(){
+        return rootFolderRepository.findAll();
+    }
+
     public Optional<RootFolder> findById(int id){
         return rootFolderRepository.findByIdWithPwzsAndUsers(id);
     }
@@ -49,8 +54,11 @@ public class RootFolderService {
     }
 
     public Optional<File> createRootFolder(String folderName) {
+
+        AppFolder appFolder = sessionContext.getAppFolder();
+        File rootsFolderFile = googleFileWorkerUtil.getFileByNameAndParents("roots", appFolder.getGoogleId());
         return Optional.ofNullable(
-                googleFileWorkerUtil.createFile(folderName, "Google Disk", MimeType.FOLDER));
+                googleFileWorkerUtil.createFile(folderName, rootsFolderFile.getName(), MimeType.FOLDER, rootsFolderFile.getId()));
     }
 
     @PreAuthorize("hasRole('OWNER') or hasRole('ADMIN')")
@@ -58,7 +66,7 @@ public class RootFolderService {
         while (true) {
             if (changeRootMethod.equals(ChangeRootMethod.GOOGLE_ID)) {
                 System.out.printf("%sВведите %s папки на вашем Google Disk:\n", jColorUtil.INFO,
-                        jColorUtil.turnTextIntoColor("google_id", JColorUtil.COLOR.INFO));
+                        jColorUtil.turnTextIntoColor("google id", JColorUtil.COLOR.INFO));
             } else {
                 System.out.printf("%sВведите %s папки на вашем Google Disk:\n", jColorUtil.INFO,
                         jColorUtil.turnTextIntoColor("название", JColorUtil.COLOR.INFO));
@@ -73,15 +81,21 @@ public class RootFolderService {
             if (changeRootMethod.equals(ChangeRootMethod.GOOGLE_ID)) {
                 if (files.isEmpty()){
                     System.out.printf("%sНе найдено папок с указанным %s\n", jColorUtil.WARN,
-                            jColorUtil.turnTextIntoColor("google_id", JColorUtil.COLOR.INFO));
+                            jColorUtil.turnTextIntoColor("google id", JColorUtil.COLOR.INFO));
                     return;
                 } else {
                     File file = files.getFirst();
-                    RootFolder newRootFolder = RootFolder.builder()
+                    RootFolder.RootFolderBuilder rootFolderBuilder = RootFolder.builder()
                             .title(file.getName())
                             .googleId(file.getId())
-                            .appSettings(sessionContext.getAppSettings())
-                            .build();
+                            .createdTime(file.getCreatedTime())
+                            .appSettings(sessionContext.getAppSettings());
+
+                    File pwzsFolder = googleFileWorkerUtil.getFileByNameAndParents("pwzs", file.getId());
+
+                    rootFolderBuilder.pwzsFolderId(pwzsFolder.getId());
+
+                    RootFolder newRootFolder = rootFolderBuilder.build();
 
                     Optional<RootFolder> lastRootFolder = sessionContext.getAppSettings().getLastRootFolder();
                     if (lastRootFolder.isPresent() && lastRootFolder.get().equals(newRootFolder)){
@@ -100,11 +114,17 @@ public class RootFolderService {
                     return;
                 } else if (files.size() == 1){
                     File file = files.getFirst();
-                    newRootFolder = rootFolderBuilder
+                    rootFolderBuilder
                             .title(file.getName())
                             .googleId(file.getId())
-                            .appSettings(sessionContext.getAppSettings())
-                            .build();
+                            .createdTime(file.getCreatedTime())
+                            .appSettings(sessionContext.getAppSettings());
+
+                    File pwzsFolder = googleFileWorkerUtil.getFileByNameAndParents("pwzs", file.getId());
+
+                    rootFolderBuilder.pwzsFolderId(pwzsFolder.getId());
+
+                    newRootFolder = rootFolderBuilder.build();
                 } else {
                     boolean printFolders = true;
                     boolean newRootFolderInitialized = false;
@@ -113,10 +133,9 @@ public class RootFolderService {
                             System.out.printf("%sНайдено несколько папок с таким названием:\n", jColorUtil.INFO);
                             int folderNum = 1;
                             for (File file : files) {
-                                System.out.printf("%s. %s, дата создания(%s)\n",
-                                        jColorUtil.turnTextIntoColor(
-                                                Integer.toString(folderNum++), JColorUtil.COLOR.INFO),
-                                        file.getName(),
+                                System.out.printf("%s. %s (Дата создания: %s)\n",
+                                        folderNum++,
+                                        jColorUtil.turnTextIntoColor(file.getName(), JColorUtil.COLOR.INFO),
                                         jColorUtil.turnTextIntoColor(
                                                 file.getCreatedTime().toString(), JColorUtil.COLOR.INFO));
                             }
@@ -136,11 +155,18 @@ public class RootFolderService {
                             continue;
                         }
                         File file = files.get(folderNum - 1);
-                        newRootFolder = rootFolderBuilder
+
+                        rootFolderBuilder
                                 .title(file.getName())
                                 .googleId(file.getId())
-                                .appSettings(sessionContext.getAppSettings())
-                                .build();
+                                .createdTime(file.getCreatedTime())
+                                .appSettings(sessionContext.getAppSettings());
+
+                        File pwzsFolder = googleFileWorkerUtil.getFileByNameAndParents("pwzs", file.getId());
+
+                        rootFolderBuilder.pwzsFolderId(pwzsFolder.getId());
+
+                        newRootFolder = rootFolderBuilder.build();
                         newRootFolderInitialized = true;
                     }
                 }
@@ -149,6 +175,7 @@ public class RootFolderService {
                     System.out.printf("%sЭта папка уже выбрана\n", jColorUtil.WARN);
                     return;
                 }
+
                 findRootFolderByGoogleIdAndSaveIfItNotExist(newRootFolder);
                 checkRootFolderForInternalFolders(newRootFolder);
                 return;
@@ -162,8 +189,9 @@ public class RootFolderService {
         if (foundRootByGoogleId.isPresent()){
             System.out.printf("%sПапка '%s' успешно выбрана\n", jColorUtil.SUCCESS,
                     jColorUtil.turnTextIntoColor(newRootFolder.getTitle(), JColorUtil.COLOR.INFO));
-            appSettingsService.updateSettings(settings ->
+            AppSettings updAppSettings = appSettingsService.updateSettings(settings ->
                     settings.setLastRootFolder(foundRootByGoogleId.get()));
+            sessionContext.setAppSettings(updAppSettings);
             sessionContext.setCurrentRootFolder(foundRootByGoogleId.get());
         } else {
             System.out.printf("%sЗначение ставки '%s' для этой папки выбрано по умолчанию\n", jColorUtil.INFO,
@@ -175,11 +203,13 @@ public class RootFolderService {
 
             System.out.printf("%sПапка '%s' успешно сохранена и выбрана\n", jColorUtil.SUCCESS,
                     jColorUtil.turnTextIntoColor(newRootFolder.getTitle(), JColorUtil.COLOR.INFO));
+
             sessionContext.setCurrentRootFolder(newRootFolder);
-            appSettingsService.updateSettings(settings ->
+
+            AppSettings updAppSettings = appSettingsService.updateSettings(settings ->
                     settings.setLastRootFolder(newRootFolder));
 
-            checkRootFolderForInternalFolders(newRootFolder);
+            sessionContext.setAppSettings(updAppSettings);
         }
     }
 
@@ -197,42 +227,46 @@ public class RootFolderService {
             File createdRootFolder = createdRootFolderOpt.get();
             AppSettings appSettings = sessionContext.getAppSettings();
 
-            RootFolder newRootFolder = RootFolder.builder()
+            RootFolder.RootFolderBuilder rootFolderBuilder = RootFolder.builder()
                     .googleId(createdRootFolder.getId())
                     .title(createdRootFolder.getName())
                     .payRate(appSettings.getPayRate())
                     .appSettings(appSettings)
-                    .createdTime(createdRootFolder.getCreatedTime())
-                    .build();
+                    .createdTime(createdRootFolder.getCreatedTime());
+
+            String pwzsFolderId = checkRootFolderForInternalFolders(rootFolderBuilder.build());
+
+            rootFolderBuilder.pwzsFolderId(pwzsFolderId);
+
+            RootFolder newRootFolder = rootFolderBuilder.build();
 
             save(newRootFolder);
 
             Optional<User> currentUserOpt = sessionContext.getCurrentUser();
 
             if (currentUserOpt.isPresent()){
-                System.out.println(currentUserOpt.get().getPassword());
                 User currentUser = userService.findById(currentUserOpt.get().getId()).orElseThrow();
-                System.out.println(currentUser.getPassword());
                 currentUser.addRootFolder(newRootFolder);
                 userService.saveWithoutPasswordEncoding(currentUser);
             }
 
-            appSettingsService.updateSettings(settings ->
+            appSettings = appSettingsService.updateSettings(settings ->
                     settings.setLastRootFolder(newRootFolder));
 
+            sessionContext.setAppSettings(appSettings);
             sessionContext.setCurrentRootFolder(newRootFolder);
-
-            checkRootFolderForInternalFolders(newRootFolder);
         }
     }
 
-    public void checkRootFolderForInternalFolders(RootFolder rootFolder) {
+    public String checkRootFolderForInternalFolders(RootFolder rootFolder) {
+
         Optional<FileList> foundFiles = googleFileWorkerUtil.getDirectoryFileList(rootFolder.getGoogleId());
         if (foundFiles.isPresent()) {
             FileList fileList = foundFiles.get();
             List<File> files = fileList.getFiles();
             boolean pwzsFolderNotFound = true;
             String pwzsFolderId = null;
+
             for (File file : files) {
                 if (file.getName().equals("pwzs")){
                     pwzsFolderId = file.getId();
@@ -245,27 +279,35 @@ public class RootFolderService {
                         "pwzs", rootFolder.getTitle(), MimeType.FOLDER, rootFolder.getGoogleId()).getId();
 
             }
-            String finalPwzFolderId = pwzsFolderId;
-            appSettingsService.updateSettings(settings -> settings.setPwzsFolderId(finalPwzFolderId));
             sessionContext.setCurrentPwzsFolderId(pwzsFolderId);
+            return pwzsFolderId;
         } else {
             System.out.printf("Root folder does not exist: %s\n", rootFolder.getGoogleId());
+            return null;
         }
     }
 
-    public List<File> findRootFolder(ChangeRootMethod changeRootMethod, String idOrTitle) {
-        FileList files = googleFileWorkerUtil.getDriveFoldersList();
+    public List<File> findRootFolder(ChangeRootMethod changeRootMethod, String rootIdOrTitle) {
+        AppFolder appFolder = sessionContext.getAppFolder();
+
+        Optional<FileList> filesOpt = googleFileWorkerUtil.getDirectoryFileList(appFolder.getRootsFolderGoogleId());
+        if(filesOpt.isEmpty()){
+            System.out.printf("%sВозникла непредвиденная ошибка\n", jColorUtil.ERROR);
+            return null;
+        }
+        FileList files = filesOpt.get();
+
         if(changeRootMethod.equals(ChangeRootMethod.GOOGLE_ID)) {
             return files.getFiles()
                     .stream()
-                    .filter(file -> file.getId().equals(idOrTitle))
+                    .filter(file -> file.getId().equals(rootIdOrTitle))
                     .findFirst()
                     .map(Collections::singletonList)
                     .orElse(Collections.emptyList());
         } else {
             return files.getFiles()
                     .stream()
-                    .filter(file -> file.getName().equals(idOrTitle))
+                    .filter(file -> file.getName().equals(rootIdOrTitle))
                     .toList();
         }
     }
@@ -275,7 +317,7 @@ public class RootFolderService {
             System.out.printf("%sНе выбрана корневая папка, выберите ее, перед тем как производить удаление\n",
                     jColorUtil.WARN);
         } else {
-            RootFolder currentRootFolder = sessionContext.getCurrentRootFolder().get();
+            RootFolder currentRootFolder = findById(sessionContext.getCurrentRootFolder().get().getId()).orElseThrow();
 
             String firstQuestion = "Вы действительно хотите удалить текущую корневую папку";
             if(inputUtil.askYesOrNo(firstQuestion, "", JColorUtil.COLOR.WARN)){
@@ -289,8 +331,10 @@ public class RootFolderService {
                         userService.saveWithoutPasswordEncoding(user);
                     }
 
-                    appSettingsService.updateSettings(settings -> {
+                    AppSettings updAppSettings = appSettingsService.updateSettings(settings -> {
                         settings.setLastRootFolder(null);
+                        settings.setLastPwz(null);
+                        settings.setLastMonthSheet(null);
                         settings.getRootFolders().remove(currentRootFolder);
                     });
 
@@ -298,7 +342,11 @@ public class RootFolderService {
 
                     googleFileWorkerUtil.deleteFileById(currentRootFolder.getGoogleId(), currentRootFolder.getTitle());
 
+                    sessionContext.setAppSettings(updAppSettings);
                     sessionContext.setCurrentRootFolder(null);
+                    sessionContext.setCurrentPwz(null);
+                    sessionContext.setCurrentPwzsFolderId(null );
+                    sessionContext.setCurrentMonthSheet(null);
                 }
             }
         }

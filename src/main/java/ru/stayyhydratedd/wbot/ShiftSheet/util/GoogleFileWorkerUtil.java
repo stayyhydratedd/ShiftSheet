@@ -102,12 +102,14 @@ public class GoogleFileWorkerUtil {
         try{
             return Optional.of(driveService.files().list()
                     .setQ("'" + folderId + "' in parents and trashed = false")
-                    .setFields("nextPageToken, files(id, name)")
+                    .setFields("nextPageToken, files(id, name, createdTime)")
                     .execute());
         } catch (IOException e) {
+            e.printStackTrace();
             return Optional.empty();
         }
     }
+    
     //перегруженный метод, используется, чтобы вернуть список доступных файлов в google drive
      public FileList getDriveFoldersList() {
         try{
@@ -120,12 +122,39 @@ public class GoogleFileWorkerUtil {
         }
     }
 
-    public List<Sheet> getSheets(String pwzGoogleId) {
+    public List<Sheet> getSheets(String spreadsheetGoogleId) {
         try {
-            Spreadsheet spreadsheet = sheetsService.spreadsheets().get(pwzGoogleId).execute();
+            Spreadsheet spreadsheet = sheetsService.spreadsheets().get(spreadsheetGoogleId).execute();
             return spreadsheet.getSheets();
         } catch (IOException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    public File getFileByNameAndParents(String fileName, String parentFolderId) {
+        try {
+            String query = String.format("name = '%s' and trashed = false", fileName);
+
+            if (parentFolderId != null && !parentFolderId.isEmpty()) {
+                query += String.format(" and '%s' in parents", parentFolderId);
+            }
+
+            FileList result = driveService.files().list()
+                    .setQ(query)
+                    .setSpaces("drive")
+                    .setFields("files(id, name, createdTime, mimeType, parents)")
+                    .setPageSize(1)
+                    .execute();
+
+            List<File> files = result.getFiles();
+            if (files != null && !files.isEmpty()) {
+                return files.getFirst();  // Возвращаем первый найденный файл
+            } else {
+                return null;  // Файл не найден
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
         }
     }
 
